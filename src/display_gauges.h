@@ -52,9 +52,10 @@ void resetGaugeTextCache();
 // Get short filament type label (e.g., "PLA", "PETG", "TPU", "ABS")
 const char* getFilamentTypeLabel(const char* fullType);
 
-// Draw AMS Filament All gauge - shows all 4 trays: color + type + % + humidity
+// Draw all 4 trays of the selected AMS unit (color + type + % + humidity).
+// Absent unit or unparsed tray renders as a diagonal X cross-out.
 void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16_t radius,
                              int16_t thickness, const struct AmsState& ams,
-                             bool forceRedraw);
+                             uint8_t unitIndex, bool forceRedraw);
 
 #endif // DISPLAY_GAUGES_H

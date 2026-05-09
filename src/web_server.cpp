@@ -874,7 +874,7 @@ var gaugeTypes=[
   'AMS 1 Humidity','AMS 2 Humidity','AMS 3 Humidity','AMS 4 Humidity',
   'Layer Progress',
   'AMS 1 Temp','AMS 2 Temp','AMS 3 Temp','AMS 4 Temp',
-  'AMS Filament All'
+  'AMS 1 Filament','AMS 2 Filament','AMS 3 Filament','AMS 4 Filament'
 ];
 (function(){
   var sels=document.querySelectorAll('.gauge-slot-sel');

@@ -874,7 +874,7 @@ const char* getFilamentTypeLabel(const char* fullType) {
 }
 
 // -----------------------------------------------------------------------------
-//  AMS Filament All gauge — shows all 4 trays at once.
+//  Renders all 4 trays of the selected AMS unit (unitIndex).
 //
 //  480×480 (SenseCAP): Full design with 4 colored quadrants, type labels,
 //  remaining percentages, separator lines, and center humidity indicator.
@@ -882,10 +882,13 @@ const char* getFilamentTypeLabel(const char* fullType) {
 //
 //  240×240: Simplified — 4 colored quadrants + center humidity only.
 //  The 32px radius is too small for readable text inside quadrants.
+//
+//  Absent unit or unparsed tray renders as a diagonal X cross-out
+//  (matches the 240x320 layout style for empty slots).
 // -----------------------------------------------------------------------------
 void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16_t radius,
                              int16_t thickness, const struct AmsState& ams,
-                             bool forceRedraw) {
+                             uint8_t unitIndex, bool forceRedraw) {
   ScopedWrite sw(tft);
   uint16_t bg = dispSettings.bgColor;
   uint16_t dim = CLR_TEXT_DIM;
@@ -899,6 +902,16 @@ void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16
   // Fill circle background
   tft.fillCircle(cx, cy, innerR, bg);
 
+  // Stale-cache guard: MQTT parser keeps cached trays on partial updates
+  // (bambu_mqtt.cpp ~line 508). When the selected unit drops, trays[ui*4..ui*4+3]
+  // may still hold stale present=true entries. Without unitPresent, the gauge
+  // would render a vanished AMS as if filaments were still loaded. NEVER fall
+  // back to unit 0 — selecting a non-existent AMS must show all-X, not unit 0's data.
+  const bool unitPresent = ams.present
+                        && unitIndex < AMS_MAX_UNITS
+                        && unitIndex < ams.unitCount
+                        && ams.units[unitIndex].present;
+
   // Humidity color scale: matches humidityColor() convention (lower = dryer).
   static const uint16_t humidColors[6] = {
     0x18E3,  // 0 - dim (no data / unknown)
@@ -910,8 +923,8 @@ void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16
   };
 
   uint8_t humidLevel = 0;
-  if (ams.present && ams.unitCount > 0) {
-    humidLevel = ams.units[0].humidity;
+  if (unitPresent) {
+    humidLevel = ams.units[unitIndex].humidity;
     if (humidLevel > 5) humidLevel = 5;
   }
   uint16_t hColor = humidColors[humidLevel];
@@ -922,15 +935,22 @@ void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16
   const int16_t halfR = innerR;
 
   // Draw 4 colored quadrants
-  for (int qi = 0; qi < 4; qi++) {
-    const AmsTray& tray = ams.trays[qi];
+  for (int qi = 0; qi < AMS_TRAYS_PER_UNIT; qi++) {
     int16_t fx, fy, fw, fh;
     if (qi == 0)        { fx = cx - halfR;  fy = cy - halfR;  fw = halfR;  fh = halfR; }
     else if (qi == 1)   { fx = cx;           fy = cy - halfR;  fw = halfR;  fh = halfR; }
     else if (qi == 2)   { fx = cx;           fy = cy;          fw = halfR;  fh = halfR; }
     else                { fx = cx - halfR;  fy = cy;          fw = halfR;  fh = halfR; }
 
-    if (tray.present) {
+    bool slotPresent = false;
+    int trayIdx = -1;
+    if (unitPresent) {
+      trayIdx = unitIndex * AMS_TRAYS_PER_UNIT + qi;
+      slotPresent = ams.trays[trayIdx].present;
+    }
+
+    if (slotPresent) {
+      const AmsTray& tray = ams.trays[trayIdx];
       uint16_t swatchColor = tray.colorRgb565;
       tft.fillRect(fx + 1, fy + 1, fw - 2, fh - 2, swatchColor);
 
@@ -974,18 +994,11 @@ void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16
       tft.drawString(remainBuf, tCX, tCY + 8);
 #endif
     } else {
-#if SCREEN_W >= 480
-      // Empty slot label
-      int16_t qCenterX = cx + qSlotX[qi] * (halfR / 2);
-      int16_t qCenterY = cy + qSlotY[qi] * (halfR / 2);
-      const int16_t textInset = 5;
-      int16_t tCX = qCenterX - qSlotX[qi] * textInset;
-      int16_t tCY = qCenterY - qSlotY[qi] * textInset;
-      tft.setTextDatum(MC_DATUM);
-      setFont(tft, FONT_SMALL);
-      tft.setTextColor(dim, bg);
-      tft.drawString("--", tCX, tCY);
-#endif
+      // Empty slot or absent unit: diagonal X cross-out matches the 240x320
+      // AMS slot style (display_ui.cpp ~line 1851). Outer corners get trimmed
+      // by the circle-clip pass below.
+      tft.drawLine(fx + 1,      fy + 1,      fx + fw - 2, fy + fh - 2, dim);
+      tft.drawLine(fx + fw - 2, fy + 1,      fx + 1,      fy + fh - 2, dim);
     }
   }
 
@@ -1020,13 +1033,13 @@ void drawAmsFilamentAllGauge(lgfx::LovyanGFX& tft, int16_t cx, int16_t cy, int16
     if (d2 < r2) tft.drawPixel(cx, cy - dy, dim);
   }
 
-  // Center humidity indicator
+  // Center humidity indicator (only when unit actually present)
   const int16_t humCircleR = (radius >= 60) ? 16 : 11;
   tft.fillCircle(cx, cy, humCircleR, bg);
   tft.drawCircle(cx, cy, humCircleR, dim);
-  if (ams.present && ams.unitCount > 0 && ams.units[0].present) {
+  if (unitPresent) {
     char humBuf[4];
-    snprintf(humBuf, sizeof(humBuf), "H%d", ams.units[0].humidity);
+    snprintf(humBuf, sizeof(humBuf), "H%d", ams.units[unitIndex].humidity);
     tft.setTextDatum(MC_DATUM);
     setFont(tft, radius >= 60 ? FONT_BODY : FONT_SMALL);
     tft.setTextColor(hColor, bg);
