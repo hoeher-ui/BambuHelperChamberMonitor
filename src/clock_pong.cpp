@@ -34,8 +34,11 @@
 #define ARK_LAND_BRICK_COLS 13
 
 // ========== Gameplay constants (not layout-dependent) ==========
-#define ARK_BALL_SIZE     4
-#define ARK_PADDLE_H      4
+// Logical ball size scales with display — bigger screen needs bigger ball for visibility
+#define ARK_BALL_SIZE_BASE 4
+#define ARK_BALL_SIZE      (SCREEN_W >= 480 ? ARK_BALL_SIZE_BASE * 2 : ARK_BALL_SIZE_BASE)
+#define ARK_PADDLE_H_BASE  4
+#define ARK_PADDLE_H      (SCREEN_W >= 480 ? ARK_PADDLE_H_BASE * 2 : ARK_PADDLE_H_BASE)
 #define ARK_BALL_SPEED    3.0f
 #define ARK_PADDLE_SPEED  4
 #define ARK_UPDATE_MS     20    // ~50fps
@@ -183,6 +186,9 @@ static void refreshPongLayout() {
   next.timeStartX = (next.screenW - TIME_TOTAL_W) / 2;
   pongLayout = next;
 }
+
+// Text size: scale up on high-res displays (480x480 uses 2x layout constants)
+static const int pongTextSize = (SCREEN_W >= 480) ? 2 : 1;
 
 // ========== Digit bounce (inlined) ==========
 static void triggerBounce(int i) {
@@ -340,18 +346,27 @@ static bool overlapsText(int bx, int by) {
 }
 
 static void drawBall() {
+#if SCREEN_W >= 480
+  // SenseCAP 480×480: always erase + draw every frame. Text uses
+  // setTextColor(fg,bg) so it redraws atomically, covering any ball erase.
   if (prevBallX >= 0) {
-    // Ball passes behind text — no erase needed, no damage to repair
+    tft.fillRect(prevBallX, prevBallY, ARK_BALL_SIZE, ARK_BALL_SIZE, TFT_BLACK);
+  }
+  tft.fillRect((int)ballX, (int)ballY, ARK_BALL_SIZE, ARK_BALL_SIZE, TFT_WHITE);
+#else
+  // 240-wide boards: original cached path — ball passes behind text without
+  // erasing, markBallDamage forces text redraw only when actually overlapped.
+  if (prevBallX >= 0) {
     if (overlapsText(prevBallX, prevBallY)) {
       // skip — ball was never drawn here
     } else {
       tft.fillRect(prevBallX, prevBallY, ARK_BALL_SIZE, ARK_BALL_SIZE, TFT_BLACK);
     }
   }
-  // Don't draw ball over time digits — it passes behind
   if (!overlapsText((int)ballX, (int)ballY)) {
     tft.fillRect((int)ballX, (int)ballY, ARK_BALL_SIZE, ARK_BALL_SIZE, TFT_WHITE);
   }
+#endif
   prevBallX = (int)ballX;
   prevBallY = (int)ballY;
 }
@@ -552,7 +567,7 @@ static int digitX(int i) {
 
 static void drawTime() {
   const PongLayout& layout = pongLayout;
-  tft.setTextSize(1);  // no scaling, Font 7 is already 48px
+  tft.setTextSize(pongTextSize);
   char digits[5];
   if (netSettings.use24h) {
     digits[0] = '0' + (dispHour / 10);
@@ -569,13 +584,43 @@ static void drawTime() {
 
   bool colon = showColon();
 
-  // Draw digits - only redraw changed ones
   setFont(tft, FONT_7SEG);
-  tft.setTextSize(1);
+  tft.setTextSize(pongTextSize);
   tft.setTextColor(dispSettings.clockTimeColor, TFT_BLACK);
 
+#if SCREEN_W >= 480
+  // SenseCAP 480×480: always redraw digits every frame — text uses
+  // setTextColor(fg,bg) so it redraws atomically, covering any ball erase.
   for (int i = 0; i < 5; i++) {
     if (i == 2) continue;  // skip colon slot, handled separately
+
+    int x = digitX(i);
+    int y = layout.timeY + (int)digitOffsetY[i];
+
+    // Clear previous position if digit moved (bounce animation)
+    if (prevDigitY[i] != 0 && prevDigitY[i] != y) {
+      tft.fillRect(x, prevDigitY[i], DIGIT_W + 2, DIGIT_H, TFT_BLACK);
+    }
+
+    tft.drawChar(digits[i], x, y, 7);
+    prevDigits[i] = digits[i];
+    prevDigitY[i] = y;
+  }
+
+  // Colon — avoid per-frame flicker: only clear+redraw on state transition.
+  // When the colon state is stable, it was already correctly drawn.
+  int cx = digitX(2);
+  if (colon != prevColon) {
+    tft.fillRect(cx, layout.timeY, COLON_W, DIGIT_H, TFT_BLACK);
+    if (colon) {
+      tft.drawChar(':', cx, layout.timeY, 7);
+    }
+  }
+  prevColon = colon;
+#else
+  // 240-wide boards: original cache-based path — only redraw on change.
+  for (int i = 0; i < 5; i++) {
+    if (i == 2) continue;
 
     int x = digitX(i);
     int y = layout.timeY + (int)digitOffsetY[i];
@@ -583,8 +628,7 @@ static void drawTime() {
     bool changed = (digits[i] != prevDigits[i]) || bouncing || (prevDigitY[i] != y);
 
     if (changed) {
-      // Clear previous and current position
-      int clearW = DIGIT_W + 2;  // +2 margin for font rendering
+      int clearW = DIGIT_W + 2;
       if (prevDigitY[i] != 0)
         tft.fillRect(x, prevDigitY[i], clearW, DIGIT_H, TFT_BLACK);
       if (prevDigitY[i] != y)
@@ -596,7 +640,7 @@ static void drawTime() {
     }
   }
 
-  // Colon - blinks, draw only when state changes
+  // Colon — blinks, draw only when state changes
   if (colon != prevColon) {
     int cx = digitX(2);
     tft.fillRect(cx, layout.timeY, COLON_W, DIGIT_H, TFT_BLACK);
@@ -605,6 +649,7 @@ static void drawTime() {
     }
     prevColon = colon;
   }
+#endif
 
   // AM/PM for 12h mode
   if (!netSettings.use24h) {
