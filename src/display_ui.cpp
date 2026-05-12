@@ -1962,7 +1962,7 @@ static void drawAmsStrip(const AmsState& ams,
   if (showFilamentTypes) {
     barY   = zoneY;
     typeY  = barY + barH + 3;   // 2px lower than before so names breathe off the bar
-    labelY = typeY + 11;        // 8px font1 type row + 3px gap before font2 label
+    labelY = typeY + 13;        // 8px font1 type row + 5px gap before font2 label
   } else {
     barY   = zoneY + (zoneH - barH - LY_AMS_LABEL_OFFY - 8) / 2;
     labelY = barY + barH + LY_AMS_LABEL_OFFY;
