@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BambuHelper Web Flasher</title>
+  <meta name="description" content="Flash BambuHelper firmware to your ESP32 board directly from the browser. No tools, no installs.">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <header>
+    <h1>BambuHelper Web Flasher</h1>
+    <p class="subtitle">Flash BambuHelper firmware to your ESP32 board in one click.</p>
+  </header>
+
+  <main>
+    <section class="card requirements">
+      <h2>Before you start</h2>
+      <ul>
+        <li>Use <strong>Chrome</strong> or <strong>Edge</strong> on a desktop or laptop (Web Serial is not supported on Firefox, Safari, or mobile browsers).</li>
+        <li>Plug your ESP32 board into a USB port with a <strong>data</strong> cable (some cables are power-only).</li>
+        <li>Close any other program that might be holding the serial port (Arduino IDE serial monitor, PlatformIO monitor, etc.).</li>
+      </ul>
+    </section>
+
+    <section class="card flash">
+      <h2>1. Pick your board</h2>
+      <div class="board-row">
+        <label for="board-select" class="visually-hidden">Board</label>
+        <select id="board-select" aria-label="Board"></select>
+      </div>
+      <div id="board-preview" class="board-preview"></div>
+      <p id="version-line" class="version-line"></p>
+      <p id="status-line" class="status-line"></p>
+
+      <h2>2. Install</h2>
+      <div id="install-slot"></div>
+      <p class="hint">A dialog will ask which serial port to use - pick the one that appears when you plug the board in.</p>
+    </section>
+
+    <section class="card after-flash">
+      <h2>3. After flashing</h2>
+      <p>Your device boots into setup mode and shows the WiFi name and password right on the screen, like this:</p>
+      <figure>
+        <div class="ap-mock" aria-label="Device screen showing WiFi Setup with SSID BambuHelper-XXXX, password bambu1234, and address 192.168.4.1">
+          <div class="ap-mock-title">WiFi Setup</div>
+          <div class="ap-mock-label">Connect to WiFi:</div>
+          <div class="ap-mock-ssid">BambuHelper-<span class="ap-mock-xxxx">XXXX</span></div>
+          <div class="ap-mock-label">Password:</div>
+          <div class="ap-mock-text">bambu1234</div>
+          <div class="ap-mock-label">Then open:</div>
+          <div class="ap-mock-ip">192.168.4.1</div>
+        </div>
+        <figcaption>Example AP-mode screen. <code>XXXX</code> is unique to your device.</figcaption>
+      </figure>
+      <ol>
+        <li>Join the <code>BambuHelper-XXXX</code> WiFi from your phone or laptop. Password: <code>bambu1234</code>.</li>
+        <li>Open <a href="http://192.168.4.1">http://192.168.4.1</a> in a browser.</li>
+        <li>Enter your home WiFi credentials and your printer details, then save.</li>
+      </ol>
+      <p>The device reboots, joins your WiFi, and starts monitoring the printer.</p>
+      <p class="hint">Need more detail? See the <a href="https://github.com/Keralots/BambuHelper#configuration" target="_blank" rel="noopener">full setup guide on GitHub</a>.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      <a href="https://github.com/Keralots/BambuHelper" target="_blank" rel="noopener">BambuHelper on GitHub</a>
+      &middot;
+      <a href="https://github.com/Keralots/BambuHelper/issues" target="_blank" rel="noopener">Report an issue</a>
+    </p>
+  </footer>
+
+  <script src="flasher.js"></script>
+</body>
+</html>
