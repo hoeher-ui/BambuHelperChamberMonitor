@@ -3312,6 +3312,12 @@ static void otaAutoTaskFn(void* param) {
 
   otaAutoStatus = "downloading";
 
+  // Pause IDLE0 watchdog: a sustained TLS download keeps the WiFi task on
+  // core 0 hot enough that IDLE0 can be starved past the 5 s TWDT window,
+  // especially on CYD (original ESP32 without S3's crypto accelerator).
+  // The OTA task itself runs pinned to core 1 (see handleOtaAuto).
+  disableCore0WDT();
+
   WiFiClientSecure client;
   client.setCACertBundle(rootca_crt_bundle_start);
 
@@ -3352,6 +3358,7 @@ static void otaAutoTaskFn(void* param) {
     }
   }
 
+  enableCore0WDT();
   otaAutoInProgress = false;
   vTaskDelete(nullptr);
 }
@@ -3375,7 +3382,10 @@ static void handleOtaAuto() {
   otaAutoStatus     = "starting";
 
   String* urlHeap = new String(url);
-  xTaskCreate(otaAutoTaskFn, "otaAuto", 8192, (void*)urlHeap, 5, nullptr);
+  // Pin to core 1: the WiFi task lives on core 0 and a concurrent TLS
+  // download here would compete for the same core, starving IDLE0 and
+  // tripping the task watchdog mid-flash on slower boards (CYD).
+  xTaskCreatePinnedToCore(otaAutoTaskFn, "otaAuto", 8192, (void*)urlHeap, 5, nullptr, 1);
 
   server.send(200, "application/json", "{\"status\":\"started\"}");
 }

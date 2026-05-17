@@ -642,8 +642,10 @@ void loop() {
   updateDisplay();
 
   // MQTT and rotation after display update - TLS reconnect can block for
-  // several seconds so we handle it last to keep UI responsive
-  if (isWiFiConnected() && !isAPMode() && isAnyPrinterConfigured()) {
+  // several seconds so we handle it last to keep UI responsive.
+  // Skip during auto-OTA: that path already holds a TLS session to GitHub
+  // and a concurrent second TLS session to Bambu Cloud is unsupported.
+  if (isWiFiConnected() && !isAPMode() && isAnyPrinterConfigured() && !isOtaAutoInProgress()) {
     handleBambuMqtt();
     handleRotation();
   }
