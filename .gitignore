@@ -9,8 +9,7 @@ codex/
 *.elf
 /firmware/
 *.map
-tools/pushall_dump.json
-tools/ams_dump.json
+tools/pushall/*
 *.bak-*
 CLAUDE.md
 VLW_FONTS_PARKED.md

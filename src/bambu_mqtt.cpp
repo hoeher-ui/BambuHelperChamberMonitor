@@ -308,46 +308,62 @@ static void parseMqttPayload(byte* payload, unsigned int length, BambuState& s, 
   uint8_t pendingSnowTrayIdx = 0;
   bool    hasSnowData = false;       // true when snow was parsed for active nozzle
 
-  // H2D/H2C dual nozzle: parse extruder directly from raw payload
-  // (bypasses ArduinoJson filter which strips it due to deep nesting)
+  // Extruder block: parse directly from raw payload (bypasses ArduinoJson
+  // filter which strips it due to deep nesting under print.device).
+  // - info.size() >= 2: dual nozzle (H2C/H2D) - per-nozzle temp + snow
+  // - info.size() == 1: single nozzle - snow only (P-series, X-series and
+  //   newer A-series firmware send snow to track the currently-feeding tray
+  //   during multi-color prints, distinct from tray_now which reports the
+  //   "logically loaded" tray)
   const char* extPos = (const char*)memmem(payload, length, "\"extruder\":", 11);
   if (extPos) {
     const char* objStart = extPos + 11;  // skip past "extruder":
     // Skip whitespace
     while (objStart < payloadEnd && (*objStart == ' ' || *objStart == '\t')) objStart++;
     if (objStart < payloadEnd && *objStart == '{') {
-      JsonDocument extDoc;
-      if (!deserializeJson(extDoc, objStart, (size_t)(payloadEnd - objStart))) {
-        JsonArray info = extDoc["info"];
-        if (info.size() >= 2) {
-          if (!s.dualNozzle) Serial.println("MQTT: dual nozzle DETECTED (H2D/H2C)");
-          s.dualNozzle = true;
+      // Find matching closing brace (mirrors the AMS parser pattern below)
+      int depth = 0;
+      const char* end = objStart;
+      while (end < payloadEnd) {
+        if (*end == '{') depth++;
+        else if (*end == '}') { depth--; if (depth == 0) { end++; break; } }
+        end++;
+      }
+      if (depth == 0) {
+        JsonDocument extDoc;
+        if (!deserializeJson(extDoc, objStart, (size_t)(end - objStart))) {
+          JsonArray info = extDoc["info"];
 
-          if (extDoc["state"].is<unsigned int>()) {
-            uint32_t st = extDoc["state"].as<unsigned int>();
-            s.activeNozzle = (st >> 4) & 0x0F;
-            if (s.activeNozzle > 1) s.activeNozzle = 0;
+          if (info.size() >= 2) {
+            if (!s.dualNozzle) Serial.println("MQTT: dual nozzle DETECTED (H2D/H2C)");
+            s.dualNozzle = true;
+
+            if (extDoc["state"].is<unsigned int>()) {
+              uint32_t st = extDoc["state"].as<unsigned int>();
+              s.activeNozzle = (st >> 4) & 0x0F;
+              if (s.activeNozzle > 1) s.activeNozzle = 0;
+            }
           }
+          // Single-nozzle: s.activeNozzle stays at default 0.
 
+          // Snow + per-nozzle temp from extruder.info[].
+          // Temp is dual-nozzle only - single-nozzle gets it from print["nozzle_temper"].
           for (JsonObject entry : info) {
             if (!entry["id"].is<int>()) continue;
             uint8_t id = entry["id"].as<int>();
+            if (id != s.activeNozzle) continue;
 
-            // Extract snow (per-nozzle active tray) - defer normalization
-            // until after AMS units are parsed (need units[].id mapping)
             if (entry["snow"].is<unsigned int>()) {
               uint32_t snow = entry["snow"].as<unsigned int>();
               uint8_t amsIdx  = snow >> 8;
               uint8_t trayIdx = snow & 0x03;
               MQTT_LOG("nozzle[%d] snow=%u -> ams=%d tray=%d", id, snow, amsIdx, trayIdx);
-              if (id == s.activeNozzle) {
-                pendingSnowAmsId = amsIdx;
-                pendingSnowTrayIdx = trayIdx;
-                hasSnowData = true;
-              }
+              pendingSnowAmsId = amsIdx;
+              pendingSnowTrayIdx = trayIdx;
+              hasSnowData = true;
             }
 
-            if (id == s.activeNozzle && entry["temp"].is<unsigned int>()) {
+            if (s.dualNozzle && entry["temp"].is<unsigned int>()) {
               uint32_t packed = entry["temp"].as<unsigned int>();
               s.nozzleTemp   = (float)(packed & 0xFFFF);
               s.nozzleTarget = (float)(packed >> 16);
@@ -405,7 +421,11 @@ static void parseMqttPayload(byte* payload, unsigned int length, BambuState& s, 
             }
           }
 
-          bool hasExplicitTrayNow = amsDoc["tray_now"].is<const char*>() && !s.dualNozzle;
+          // tray_now is parsed regardless of nozzle count - used as a fallback
+          // when snow is absent. Snow (extruder.info[].snow) takes priority in
+          // the activeTray block below since it tracks the currently-feeding
+          // tray on multi-color prints, while tray_now reports the "loaded" tray.
+          bool hasExplicitTrayNow = amsDoc["tray_now"].is<const char*>();
           uint8_t rawTrayNow = 255;
           if (hasExplicitTrayNow) rawTrayNow = atoi(amsDoc["tray_now"].as<const char*>());
 
@@ -537,28 +557,32 @@ static void parseMqttPayload(byte* payload, unsigned int length, BambuState& s, 
           }
 
           // --- activeTray normalization (after units are populated) ---
-          // Snow special values (from pushall_dump.json):
-          //   0xFFFF (65535) -> amsIdx=255 = no active tray
-          //   0xFEFF (65279) -> amsIdx=254 = external spool
-          // These mirror tray_now sentinels: 255=none, 254=external.
-          if (s.dualNozzle) {
+          // Priority: snow (currently-feeding tray) > tray_now (logically loaded).
+          // During multi-color prints these diverge - snow follows feeder swaps,
+          // tray_now stays on the print's primary filament. Matches Bambu Handy /
+          // slicer behavior. When snow is absent, tray_now is the only signal.
+          //
+          // Sentinels (snow and tray_now both use):
+          //   255 = no active tray
+          //   254 = external spool
+          if (hasSnowData) {
             if (pendingSnowAmsId == 254) {
-              s.ams.activeTray = 254;  // external spool sentinel
+              s.ams.activeTray = 254;
               MQTT_LOG("activeTray: snow external spool (amsId=254)");
-            } else if (pendingSnowAmsId != 255) {
+            } else if (pendingSnowAmsId == 255) {
+              s.ams.activeTray = 255;
+              MQTT_LOG("activeTray: snow reports no active tray");
+            } else {
               uint8_t normalized = normalizeTrayIndex(s.ams, pendingSnowAmsId, pendingSnowTrayIdx);
               if (normalized != 255) {
                 s.ams.activeTray = normalized;
+                MQTT_LOG("activeTray: snow ams=%d tray=%d -> normalized=%d",
+                         pendingSnowAmsId, pendingSnowTrayIdx, s.ams.activeTray);
               } else {
                 MQTT_LOG("activeTray: snow ams=%d tray=%d unresolved - keeping cached=%d",
                          pendingSnowAmsId, pendingSnowTrayIdx, s.ams.activeTray);
               }
-            } else if (hasSnowData) {
-              // snow was present but amsIdx==255 means "no active tray"
-              s.ams.activeTray = 255;
-              MQTT_LOG("activeTray: snow reports no active tray");
             }
-            // else: no extruder/snow data in this message - keep cached activeTray
           } else if (hasExplicitTrayNow) {
             if (rawTrayNow == 254) {
               s.ams.activeTray = 254;  // external spool sentinel
