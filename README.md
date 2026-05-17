@@ -155,11 +155,7 @@ You can change the buzzer GPIO later in the web interface under **Buzzer**. The 
 
 A single PWM-driven status LED can be wired to any free GPIO. Configure the pin and behaviour (heartbeat, finish flash, off) from the web interface under **LED**.
 
-Wiring is the usual LED-with-resistor setup:
-
-```
-GPIO --[ 220-470 Ω resistor ]-- LED anode (+) -- LED cathode (-) -- GND
-```
+Wiring is done using: LD06AJSA Constant Current driver
 
 Things to know:
 
@@ -168,6 +164,8 @@ Things to know:
 - On **ESP32-S3-Zero**, GPIO21 is reserved for the onboard WS2812 RGB LED and cannot be selected.
 - The LED is also a dimmer target: **hold the optional button / touchscreen** to ramp brightness down/up while the LED is on. The chosen brightness is debounced and saved to NVS after ~2 s of release.
 - Inverted-logic wiring (LED to VCC instead of GND) is not currently supported - the firmware always drives the pin active-HIGH.
+
+### Complete wiring example for ESP32-S3 Super Mini and ST7789 (240x240) display.
 
 ![wiring](img/wiring.png)
 
