@@ -238,6 +238,7 @@ static void evaluateAutoOff(uint8_t i) {
         && elapsedMin >= s.autoOffDelayMin
         && ps.nozzleTemp > 0.0f
         && ps.nozzleTemp < TASMOTA_AUTO_OFF_NOZZLE_MAX_C
+        && !ps.ams.anyDrying
         && !g_rt[i].plugOffline
         && g_rt[i].lastOkMs > 0) {
       Serial.printf("[Tasmota %u] Auto-off conditions met (elapsed=%u min, nozzle=%.1fC)\n",
