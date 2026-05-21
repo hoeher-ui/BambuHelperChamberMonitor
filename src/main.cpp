@@ -33,9 +33,27 @@ static unsigned long boardBtnChangeMs = 0;
 static unsigned long boardBtnPressStartMs = 0;
 #endif
 
+static bool isPrinterActivityStateFresh(uint8_t slot) {
+  if (slot >= MAX_ACTIVE_PRINTERS || !isPrinterConfigured(slot)) return false;
+  BambuState& s = printers[slot].state;
+  if (s.connected) return true;
+  if (s.lastUpdate == 0) return false;
+
+  unsigned long staleMs = isCloudMode(printers[slot].config.mode)
+                          ? (unsigned long)BAMBU_STALE_TIMEOUT * 5UL
+                          : (unsigned long)BAMBU_STALE_TIMEOUT;
+  return millis() - s.lastUpdate <= staleMs;
+}
+
+static bool isPrinterActiveForDisplay(uint8_t slot) {
+  if (!isPrinterActivityStateFresh(slot)) return false;
+  BambuState& s = printers[slot].state;
+  return s.printing || s.ams.anyDrying;
+}
+
 static bool anyPrinterPrinting() {
   for (uint8_t i = 0; i < MAX_ACTIVE_PRINTERS; i++) {
-    if (isPrinterConfigured(i) && printers[i].state.connected && printers[i].state.printing) {
+    if (isPrinterActivityStateFresh(i) && printers[i].state.printing) {
       return true;
     }
   }
@@ -44,7 +62,7 @@ static bool anyPrinterPrinting() {
 
 static bool anyPrinterDrying() {
   for (uint8_t i = 0; i < MAX_ACTIVE_PRINTERS; i++) {
-    if (isPrinterConfigured(i) && printers[i].state.ams.anyDrying) {
+    if (isPrinterActivityStateFresh(i) && printers[i].state.ams.anyDrying) {
       return true;
     }
   }
@@ -374,8 +392,37 @@ static void updateDisplayedPrinterScreenState() {
     return;
   }
 
+  // Global drying-wake: if any fresh printer state is drying, leave sleep-sticky
+  // screens regardless of which slot is currently displayed. Point displayIndex
+  // at the dryer so the rendered drying screen reflects real state.
+  if (isSleepStickyScreen(current) && anyPrinterDrying()) {
+    uint8_t displayed = rotState.displayIndex < MAX_ACTIVE_PRINTERS
+                        ? rotState.displayIndex : 0;
+    if (!isPrinterActivityStateFresh(displayed) ||
+        !printers[displayed].state.ams.anyDrying) {
+      for (uint8_t i = 0; i < MAX_ACTIVE_PRINTERS; i++) {
+        if (isPrinterActivityStateFresh(i) && printers[i].state.ams.anyDrying) {
+          rotState.displayIndex = i;
+          triggerDisplayTransition();
+          break;
+        }
+      }
+    }
+    setScreenState(SCREEN_IDLE);
+    setBacklight(getEffectiveBrightness());
+    finishActive = false;
+    idleClockActive = false;
+    return;
+  }
+
   BambuState& s = displayedPrinter().state;
   if (!s.connected) {
+    uint8_t displayed = rotState.displayIndex < MAX_ACTIVE_PRINTERS
+                        ? rotState.displayIndex : 0;
+    if (isPrinterActiveForDisplay(displayed)) {
+      handleDisplayedPrinterConnectedState(current, s);
+      return;
+    }
     // A WiFi/MQTT blip during/after a finish would otherwise leave the
     // "user dismissed the post-finish banner" flag sticky forever — and
     // when the printer reconnects on the NEXT print (still GCODE_FINISH
@@ -386,14 +433,6 @@ static void updateDisplayedPrinterScreenState() {
       finishActive = false;
       connectingScreenStart = millis();
     }
-    return;
-  }
-
-  if (isSleepStickyScreen(current) && s.ams.anyDrying) {
-    setScreenState(SCREEN_IDLE);
-    setBacklight(getEffectiveBrightness());
-    finishActive = false;
-    idleClockActive = false;
     return;
   }
 
@@ -546,59 +585,19 @@ static void handleBedCooldownBuzzers() {
 // ---------------------------------------------------------------------------
 //  Display rotation logic (multi-printer)
 // ---------------------------------------------------------------------------
-static void handleRotation() {
-  if (rotState.mode == ROTATE_OFF) return;
-  if (getActiveConnCount() < 2) return;
-
-  // Don't rotate when display is in clock, off, or finished state,
-  // UNLESS a printer is actively printing (wake up to show it)
-  ScreenState scr = getScreenState();
-  if (scr == SCREEN_CLOCK || scr == SCREEN_OFF || scr == SCREEN_FINISHED) {
-    if (!anyPrinterPrinting()) return;
-    // A printer started printing - wake display and let rotation proceed
-    setBacklight(getEffectiveBrightness());
+static bool slotListContains(const uint8_t slots[], uint8_t count, uint8_t slot) {
+  for (uint8_t i = 0; i < count; i++) {
+    if (slots[i] == slot) return true;
   }
+  return false;
+}
 
-  unsigned long now = millis();
-  if (now - rotState.lastRotateMs < rotState.intervalMs) return;
-
-  // Gather candidates
-  uint8_t candidates[MAX_ACTIVE_PRINTERS];
-  uint8_t candidateCount = 0;
-  uint8_t printingCount = 0;
-  uint8_t printingSlot = 0xFF;
-
-  for (uint8_t i = 0; i < MAX_ACTIVE_PRINTERS; i++) {
-    if (!isPrinterConfigured(i)) continue;
-    if (!printers[i].state.connected) continue;
-    candidates[candidateCount++] = i;
-    if (printers[i].state.printing) {
-      printingCount++;
-      printingSlot = i;
-    }
-  }
-
-  if (candidateCount == 0) return;
-
-  if (rotState.mode == ROTATE_SMART) {
-    if (printingCount == 1) {
-      // Only one printing - show it, no cycling
-      if (rotState.displayIndex != printingSlot) {
-        rotState.displayIndex = printingSlot;
-        triggerDisplayTransition();
-      }
-      rotState.lastRotateMs = now;
-      return;
-    }
-    // 0 or 2 printing: fall through to cycling
-  }
-
-  // Cycle to next candidate
+static void rotateWithinSlots(const uint8_t slots[], uint8_t count, unsigned long now) {
   uint8_t current = rotState.displayIndex;
   for (uint8_t attempt = 1; attempt <= MAX_ACTIVE_PRINTERS; attempt++) {
     uint8_t next = (current + attempt) % MAX_ACTIVE_PRINTERS;
-    for (uint8_t c = 0; c < candidateCount; c++) {
-      if (candidates[c] == next && next != current) {
+    for (uint8_t c = 0; c < count; c++) {
+      if (slots[c] == next && next != current) {
         rotState.displayIndex = next;
         triggerDisplayTransition();
         rotState.lastRotateMs = now;
@@ -608,6 +607,60 @@ static void handleRotation() {
   }
 
   rotState.lastRotateMs = now;
+}
+
+static void handleRotation() {
+  if (rotState.mode == ROTATE_OFF) return;
+  if (getActiveConnCount() < 2) return;
+
+  // Don't rotate when display is in clock, off, or finished state,
+  // UNLESS a printer is actively printing or drying (wake up to show it)
+  ScreenState scr = getScreenState();
+  if (scr == SCREEN_CLOCK || scr == SCREEN_OFF || scr == SCREEN_FINISHED) {
+    if (!anyPrinterPrinting() && !anyPrinterDrying()) return;
+    // A printer became active - wake display and let rotation proceed
+    setBacklight(getEffectiveBrightness());
+  }
+
+  unsigned long now = millis();
+
+  // Gather candidates
+  uint8_t connectedCandidates[MAX_ACTIVE_PRINTERS];
+  uint8_t connectedCount = 0;
+  uint8_t activeCandidates[MAX_ACTIVE_PRINTERS];
+  uint8_t activeCount = 0;
+
+  for (uint8_t i = 0; i < MAX_ACTIVE_PRINTERS; i++) {
+    if (!isPrinterConfigured(i)) continue;
+    if (printers[i].state.connected) connectedCandidates[connectedCount++] = i;
+    if (isPrinterActiveForDisplay(i)) activeCandidates[activeCount++] = i;
+  }
+
+  if (rotState.mode == ROTATE_SMART) {
+    if (activeCount > 0) {
+      // Active slots (printing or AMS drying) hide idle slots in Smart mode.
+      // A single active printer snaps immediately, independent of the timer.
+      if (activeCount == 1 ||
+          !slotListContains(activeCandidates, activeCount, rotState.displayIndex)) {
+        if (rotState.displayIndex != activeCandidates[0]) {
+          rotState.displayIndex = activeCandidates[0];
+          triggerDisplayTransition();
+        }
+        rotState.lastRotateMs = now;
+        return;
+      }
+
+      if (now - rotState.lastRotateMs < rotState.intervalMs) return;
+      rotateWithinSlots(activeCandidates, activeCount, now);
+      return;
+    }
+  }
+
+  if (connectedCount == 0) return;
+  if (now - rotState.lastRotateMs < rotState.intervalMs) return;
+
+  // No active Smart candidates, or ROTATE_AUTO: cycle connected printers.
+  rotateWithinSlots(connectedCandidates, connectedCount, now);
 }
 
 // ---------------------------------------------------------------------------

@@ -180,7 +180,7 @@ inline PrinterSlot& activePrinter() {
 enum RotateMode : uint8_t {
   ROTATE_OFF   = 0,   // show only activePrinterIndex
   ROTATE_AUTO  = 1,   // cycle all connected printers
-  ROTATE_SMART = 2    // prioritize printing printer, rotate if both printing
+  ROTATE_SMART = 2    // prioritize active printers (printing or AMS drying)
 };
 
 struct RotationState {

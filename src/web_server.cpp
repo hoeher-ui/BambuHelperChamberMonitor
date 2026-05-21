@@ -537,11 +537,11 @@ R"rawliteral(
       <select id="rotmode">
         <option value="0" %RMODE_OFF%>Off (show selected printer only)</option>
         <option value="1" %RMODE_AUTO%>Auto-rotate (cycle all connected)</option>
-        <option value="2" %RMODE_SMART%>Smart (prioritize printing)</option>
+        <option value="2" %RMODE_SMART%>Smart (prioritize printing / drying)</option>
       </select>
       <label for="rotinterval">Rotation interval (seconds)</label>
       <input type="number" id="rotinterval" min="10" max="600" value="%ROT_INTERVAL%">
-      <p style="font-size:11px;color:#8B949E;margin-top:4px">Smart mode shows the printing printer. Rotates only when both are printing.</p>
+      <p style="font-size:11px;color:#8B949E;margin-top:4px">Smart mode shows the printing or drying printer. Rotates only when both are active.</p>
 
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid #30363D">
         <label for="btntype">External Button</label>
