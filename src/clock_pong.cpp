@@ -39,8 +39,18 @@
 #define ARK_BALL_SIZE      (SCREEN_W >= 480 ? ARK_BALL_SIZE_BASE * 2 : ARK_BALL_SIZE_BASE)
 #define ARK_PADDLE_H_BASE  4
 #define ARK_PADDLE_H      (SCREEN_W >= 480 ? ARK_PADDLE_H_BASE * 2 : ARK_PADDLE_H_BASE)
+// JC3248W535 (320x480, PSRAM sprite + ~20ms QSPI flush) needs faster
+// physics: the play field is twice as tall as the 240px reference and the
+// effective loop rate sits well below 50 Hz, so the base 3.0 px/tick ball
+// crawls across the screen. Paddle keeps its >ball-speed margin so it can
+// still track the ball.
+#if defined(BOARD_IS_JC3248W535)
+#define ARK_BALL_SPEED    6.0f
+#define ARK_PADDLE_SPEED  8
+#else
 #define ARK_BALL_SPEED    3.0f
 #define ARK_PADDLE_SPEED  4
+#endif
 #define ARK_UPDATE_MS     20    // ~50fps
 #define ARK_MAX_FRAGS     20
 #define ARK_TIME_OVERRIDE_MS 60000
