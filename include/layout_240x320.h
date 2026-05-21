@@ -4,6 +4,12 @@
 // Layout profile: 240x320 portrait (CYD ILI9341, Waveshare ST7789)
 // Same gauge grid as 240x240 but bottom-anchored elements moved to 320px.
 
+// --- Feature flags ---
+// Permanent AMS strip below the gauges (replaces the 240x240 row-2 toggle).
+#define LAYOUT_HAS_AMS_STRIP  1
+// CYD rotation 1/3 = 320x240 landscape with AMS sidebar on the right.
+#define LAYOUT_HAS_LANDSCAPE  1
+
 // --- Screen dimensions ---
 #define LY_W    240
 #define LY_H    320

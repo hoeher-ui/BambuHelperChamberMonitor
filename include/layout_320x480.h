@@ -2,9 +2,15 @@
 #define LAYOUT_320x480_H
 
 // Layout profile: 320x480 portrait (Guition JC3248W535, AXS15231B QSPI IPS).
-// Redesigned layout that uses the extra screen real estate — does not simply
+// Redesigned layout that uses the extra screen real estate - does not simply
 // stretch the 240x320 layout. Gauges are larger, AMS strip is always visible,
 // and the ETA / bottom status areas are generously sized.
+
+// --- Feature flags ---
+// Permanent AMS strip below the gauges. Sprite-backed rendering means
+// LAYOUT_HAS_LANDSCAPE is intentionally NOT set: rotation is applied at the
+// sprite level and the layout stays portrait.
+#define LAYOUT_HAS_AMS_STRIP  1
 
 // --- Screen dimensions ---
 #define LY_W    320
@@ -123,6 +129,37 @@
 #define LY_CLK_TIME_Y    210
 #define LY_CLK_AMPM_Y    265
 #define LY_CLK_DATE_Y    310
+
+// --- Landscape-mode stubs (never used at runtime) ---
+// This layout has no landscape variant - LAYOUT_HAS_LANDSCAPE is not set, so
+// isLandscape() always returns false. display_ui.cpp still references these
+// inside `land ? LY_LAND_X : LY_X` ternaries that share code with 240x320,
+// so they must compile. Mapping them to their portrait equivalents keeps the
+// generated code identical to the portrait branch.
+#define LY_LAND_GAUGE_W       LY_W
+#define LY_LAND_ETA_Y         LY_ETA_Y
+#define LY_LAND_ETA_H         LY_ETA_H
+#define LY_LAND_ETA_TEXT_Y    LY_ETA_TEXT_Y
+#define LY_LAND_BOT_Y         LY_BOT_Y
+#define LY_LAND_BOT_H         LY_BOT_H
+#define LY_LAND_BOT_CY        LY_BOT_CY
+#define LY_LAND_AMS_X         0
+#define LY_LAND_AMS_W         0
+#define LY_LAND_AMS_TOP       0
+#define LY_LAND_AMS_BOT_FULL  0
+#define LY_LAND_AMS_BOT_SHORT 0
+#define LY_LAND_BADGE_Y       0
+#define LY_LAND_BADGE_H       0
+#define LY_LAND_BADGE_CY      0
+#define LY_LAND_FIN_GL        LY_FIN_GL
+#define LY_LAND_FIN_GR        LY_FIN_GR
+#define LY_LAND_FIN_GY        LY_FIN_GY
+#define LY_LAND_FIN_TEXT_Y    LY_FIN_TEXT_Y
+#define LY_LAND_FIN_FILE_Y    LY_FIN_FILE_Y
+#define LY_LAND_FIN_KWH_Y     LY_FIN_KWH_Y
+#define LY_LAND_FIN_BOT_Y     LY_FIN_BOT_Y
+#define LY_LAND_FIN_BOT_H     LY_FIN_BOT_H
+#define LY_LAND_FIN_WIFI_Y    LY_FIN_WIFI_Y
 
 // --- Pong/Breakout clock (scaled for 320x480) ---
 #define LY_ARK_BRICK_ROWS   5

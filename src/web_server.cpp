@@ -1887,9 +1887,11 @@ static bool resolvePlaceholder(const char* name, String& out) {
     return true;
   }
   if (strcmp(name, "AMSV_ROW") == 0) {
-#if !defined(DISPLAY_240x320) && !defined(DISPLAY_480x480)
-    // Initial state is populated by selectPrinterTab() from the per-slot JSON;
-    // value is saved as part of Save Gauge Layout (per-printer), not toggled globally.
+#if !defined(DISPLAY_240x320) && !defined(DISPLAY_320x480) && !defined(DISPLAY_480x480)
+    // Hidden on layouts with a permanent AMS strip (240x320, 320x480) and on
+    // 480x480 (no LY_AMS_* layout). Initial state is populated by
+    // selectPrinterTab() from the per-slot JSON; value is saved as part of
+    // Save Gauge Layout (per-printer), not toggled globally.
     out = "<div class=\"check-row\">"
       "<input type=\"checkbox\" id=\"amsv\" value=\"1\""
       " onchange=\"syncAmsView()\">"

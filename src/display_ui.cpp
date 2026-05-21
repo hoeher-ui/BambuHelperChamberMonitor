@@ -675,7 +675,7 @@ static void applyCydPanelInversion() {
 // ---------------------------------------------------------------------------
 //  Active-canvas helpers (rotation-aware; needed before drawing)
 // ---------------------------------------------------------------------------
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_LANDSCAPE)
 // Forward declared here so non-CYD-specific drawers can call them.
 static bool isLandscape() {
   return (dispSettings.rotation == 1 || dispSettings.rotation == 3);
@@ -1599,9 +1599,9 @@ static bool useEnhancedPortraitAms(const AmsState& ams);
 
 // Helper macro for the 240x240-only AMS-view feature (replaces gauge row 2
 // with an AMS strip). The HTML row, gauge gating, and dispatch are gated by
-// this macro so 240x320 (which already has a permanent AMS strip) and 480x480
-// (no LY_AMS_*) skip the new code path.
-#if !defined(DISPLAY_240x320) && !defined(DISPLAY_480x480)
+// this macro so layouts with a permanent AMS strip (LAYOUT_HAS_AMS_STRIP)
+// and 480x480 (no LY_AMS_*) skip the new code path.
+#if !defined(LAYOUT_HAS_AMS_STRIP) && !defined(DISPLAY_480x480)
   #define LAYOUT_240x240_AMS_VIEW 1
 #endif
 
@@ -1656,7 +1656,7 @@ static void drawIdle() {
   }
 
   // Effective screen dimensions — idle uses full screen (no AMS sidebar)
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
   const int16_t scrW = (int16_t)tft.width();
   const int16_t scrH = (int16_t)tft.height();
 #else
@@ -1755,8 +1755,8 @@ static void drawIdle() {
                   &dispSettings.bed, smoothBedTemp);
   }
 
-  // AMS strip on idle (portrait 240x320 only)
-#if defined(DISPLAY_240x320)
+  // AMS strip on idle (portrait, layouts with permanent AMS strip)
+#if defined(LAYOUT_HAS_AMS_STRIP)
   if (s.ams.present && s.ams.unitCount > 0 && !isLandscape()) {
     static uint8_t  prevIdleAmsCount = 0;
     static uint8_t  prevIdleAmsActive = 255;
@@ -1870,11 +1870,11 @@ static void drawIdle() {
 }
 
 // ---------------------------------------------------------------------------
-//  AMS tray visualization (CYD only)
-//  Portrait: horizontal strip between gauges and ETA (y=190-246)
-//  Landscape: vertical strip on right side (x=244-316)
+//  AMS tray visualization (layouts with permanent AMS strip)
+//  Portrait: horizontal strip between gauges and ETA
+//  Landscape (CYD only): vertical strip on right side
 // ---------------------------------------------------------------------------
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
 
 static uint8_t  prevAmsUnitCount = 0;
 static uint8_t  prevAmsActive    = 255;
@@ -1886,7 +1886,7 @@ static bool     prevAmsTrayPresent[AMS_MAX_TRAYS] = {false};
 static int8_t   prevAmsTrayRemain[AMS_MAX_TRAYS];  // init in drawAmsZone
 static char     prevAmsTrayTypes[AMS_MAX_TRAYS][16] = {{0}};
 
-#endif // DISPLAY_240x320 (prevAms* caches consumed only by drawAmsZone)
+#endif // LAYOUT_HAS_AMS_STRIP (prevAms* caches consumed only by drawAmsZone)
 
 // The stateless AMS helpers below also compile on 240x240 builds, where the
 // "AMS view" toggle reuses drawAmsStrip(). Excluded only on 480x480 (SenseCAP)
@@ -2159,16 +2159,22 @@ static void drawAmsStrip(const AmsState& ams,
 //      label under each tray. For 3+ AMS the bars are too narrow for text
 //      to fit cleanly, so we fall back to the default compact layout.
 // ---------------------------------------------------------------------------
-// Enhanced portrait AMS is used for 1-2 AMS units (wider bars + filament-type
-// labels). With 3+ units there isn't enough horizontal room for readable
-// filament labels, so we fall back to the compact default layout.
+// Enhanced portrait AMS is used when there is enough horizontal room for
+// readable filament-type labels under each tray bar. Per-layout bar-width math:
+//   240 wide (240x320): 4 trays * 3 AMS leaves ~16px per bar - labels collide
+//   320 wide (320x480): 4 trays * 3 AMS leaves ~21px per bar - labels fit
+// With 4+ units even 320 wide gets tight (<15px bars), so cap there.
 static bool useEnhancedPortraitAms(const AmsState& ams) {
+#if defined(DISPLAY_320x480)
+  return ams.unitCount >= 1 && ams.unitCount <= 3;
+#else
   return ams.unitCount >= 1 && ams.unitCount <= 2;
+#endif
 }
 
 #endif // !DISPLAY_480x480 (stateless AMS helpers)
 
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
 
 static void drawAmsZone(const BambuState& s, bool force) {
   // --- Change detection ---
@@ -2344,7 +2350,7 @@ static void drawAmsZone(const BambuState& s, bool force) {
   }
 }
 
-#endif // DISPLAY_240x320
+#endif // LAYOUT_HAS_AMS_STRIP
 
 // ---------------------------------------------------------------------------
 //  Helper: draw battery icon (vertical, 8x16) at (x, y) with fill from bottom.
@@ -2437,7 +2443,7 @@ static void drawPrinting() {
   // Track AMS unit-count transitions that change layout zones (badge moves
   // between header and right column at units 0↔1; bottom bar width flips at
   // units 2↔3 in landscape).
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
   static uint8_t prevPrintingUnits = 0xFF;
   bool unitsZoneChanged = (prevPrintingUnits == 0xFF) ||
                           ((prevPrintingUnits >= 1) != (s.ams.unitCount >= 1)) ||
@@ -2456,7 +2462,7 @@ static void drawPrinting() {
   const int16_t gT = LY_GAUGE_T;
 
   // Effective Y positions — landscape on CYD uses 240x240-style positions
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
   const bool land = isLandscape();
   const uint8_t units = s.ams.unitCount;
   // Right column (badge + AMS) only used in landscape with at least one AMS.
@@ -2492,8 +2498,8 @@ static void drawPrinting() {
   const int16_t botW = SCREEN_W;
 #endif
 
-  // === CYD: clear unused zone on screen transitions ===
-#if defined(DISPLAY_240x320)
+  // === Permanent AMS strip: clear unused zone on screen transitions ===
+#if defined(LAYOUT_HAS_AMS_STRIP)
   {
     int16_t scrW = (int16_t)tft.width();
     int16_t scrH = (int16_t)tft.height();
@@ -2532,7 +2538,7 @@ static void drawPrinting() {
     // Cap the header clear at the gauge column when the right-side AMS panel
     // is active; otherwise the badge that drawAmsZone parks at y=7..27 in the
     // right column (x=240..320) would be wiped on every header repaint.
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
     const int16_t hdrClearW = landAmsCol ? LY_LAND_GAUGE_W : hdrW;
 #else
     const int16_t hdrClearW = hdrW;
@@ -2761,7 +2767,7 @@ static void drawPrinting() {
   // redraw when the AMS unit-count zone changed so static change-detection
   // inside drawAmsZone cannot skip a frame after the right column was wiped
   // (e.g. transient unitCount=0 from MQTT reconnect).
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
   const bool amsForce = forceRedraw || unitsZoneChanged;
   if (isLandscape() || (s.ams.present && s.ams.unitCount > 0)) {
     drawAmsZone(s, amsForce);
@@ -2931,7 +2937,7 @@ static void drawPrinting() {
     // wiping x=240..320 in the bottom-bar y-range every bottomChanged event
     // would also erase the bottom of the AMS column (AMS_BOT_FULL=236
     // overlaps eff_botY=222..240) and drawAmsZone wouldn't repaint it.
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
     if (botW < uiW() && unitsZoneChanged) {
       int16_t cleanY = eff_botY;
       int16_t cleanH = eff_botH;
@@ -3025,7 +3031,7 @@ static void drawFinished() {
   static float prevFinKwh = -2.0f;
 
   // Effective screen dimensions — finished uses full screen (no AMS sidebar)
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
   const bool land = isLandscape();
   const int16_t scrW = (int16_t)tft.width();
   const int16_t eff_finBotY  = land ? LY_LAND_FIN_BOT_Y  : LY_FIN_BOT_Y;
@@ -3166,7 +3172,7 @@ static void drawFinished() {
     // 240x320 portrait without AMS: ~63px gap (bot bar at 290).
     // 240x320 portrait WITH AMS: AMS strip starts ~10px below — single line only.
     // 240x240: only ~11px to bottom bar — single line only.
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_AMS_STRIP)
     const bool twoLineCost = (finishTariff > 0.0f) &&
                              (land || !(s.ams.present && s.ams.unitCount > 0));
 #else
@@ -3205,8 +3211,8 @@ static void drawFinished() {
   }
   prevFinKwh = finishKwh;
 
-  // === AMS strip (portrait 240x320 only) ===
-#if defined(DISPLAY_240x320)
+  // === AMS strip (portrait, layouts with permanent AMS strip) ===
+#if defined(LAYOUT_HAS_AMS_STRIP)
   if (!land && s.ams.present && s.ams.unitCount > 0) {
     static uint8_t  prevFinAmsCount = 0;
     static uint8_t  prevFinAmsActive = 255;
