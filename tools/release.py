@@ -2,10 +2,10 @@
 """
 End-to-end release builder for BambuHelper.
 
-Runs the full release pipeline for the six MVP web-flasher boards:
+Runs the full release pipeline for the web-flasher boards:
     1. Reads FW_VERSION from include/config.h
     2. Locates pio.exe (PATH first, then ~/.platformio/penv/Scripts/pio.exe)
-    3. Builds all six PlatformIO envs in one invocation
+    3. Builds every WEB_FLASHER_BOARDS env in one PlatformIO invocation
     4. Runs merge_bins.py for each board to generate Full.bin + ota.bin
     5. Copies only the Full.bin files into docs/firmware/latest/ (web flasher
        binaries) - ota.bin stays in firmware/v<ver>/ for the GitHub Release
@@ -35,6 +35,7 @@ WEB_FLASHER_BOARDS = [
     "esp32c3",
     "ws_lcd_200",
     "ws_lcd_154",
+    "jc3248w535",
     "cyd",
     "tzt_2432",
 ]

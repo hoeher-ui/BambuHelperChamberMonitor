@@ -11,6 +11,7 @@ Usage:
     python merge_bins.py --board ws_lcd_200 # build Waveshare 2.0 firmware
     python merge_bins.py --board ws_lcd_154 # build Waveshare 1.54 firmware
     python merge_bins.py --board ws_lcd_280 # build Waveshare 2.8 firmware (community)
+    python merge_bins.py --board jc3248w535 # build Guition JC3248W535 firmware
     python merge_bins.py --all              # build all board variants
     python merge_bins.py v2.5               # override version
     python merge_bins.py --ota              # OTA binary only
@@ -96,6 +97,14 @@ BOARDS = {
         'build_env': 'ws_lcd_280',
         'board_id': 'ws_lcd_280',
     },
+    'jc3248w535': {
+        'build_dir': '.pio/build/jc3248w535',
+        'bootloader_offset': 0x0,       # ESP32-S3 starts at 0x0
+        'partitions_offset': 0x8000,
+        'firmware_offset': 0x10000,
+        'build_env': 'jc3248w535',
+        'board_id': 'jc3248w535',
+    },
     'esp32c3': {
         'build_dir': '.pio/build/esp32c3',
         'bootloader_offset': 0x0,       # ESP32-C3 starts at 0x0
@@ -121,6 +130,8 @@ BOARD_ALIASES = {
     'ws_lcd_154': 'ws_lcd_154',
     'ws280': 'ws_lcd_280',
     'ws_lcd_280': 'ws_lcd_280',
+    'jc': 'jc3248w535',
+    'jc3248w535': 'jc3248w535',
     'c3': 'esp32c3',
     'esp32c3': 'esp32c3',
 }
