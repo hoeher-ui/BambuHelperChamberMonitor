@@ -50,9 +50,14 @@ public:
       cfg.pin_rst  = 8;
       cfg.pin_busy = -1;
       cfg.memory_width  = 240;
-      cfg.memory_height = 320;   // ST7789 chip GRAM is 240x320; visible rows 0-239
+      cfg.memory_height = 320;   // ST7789 chip GRAM is 240x320
+#if defined(BOARD_PANEL_320)
       cfg.panel_width   = 240;
-      cfg.panel_height  = 240;
+      cfg.panel_height  = 320;   // 2.0" 240x320 modules (e.g. GMT020-02-8P)
+#else
+      cfg.panel_width   = 240;
+      cfg.panel_height  = 240;   // default 1.3"/1.54" 240x240 modules
+#endif
       cfg.offset_x      = 0;
       cfg.offset_y      = 0;
       cfg.readable      = false;
