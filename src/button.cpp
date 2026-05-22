@@ -28,6 +28,32 @@
     value = Wire.read();
     return true;
   }
+#elif defined(USE_CST328)
+  // CST328 (Waveshare 2.8" board). Differences vs CST816:
+  //   - I2C address 0x1A
+  //   - 16-bit register addresses (high byte then low byte)
+  //   - "Touch info" lives at register 0x00D0; first byte = active finger count
+  #include <Wire.h>
+  #define CST328_ADDR              0x1A
+  #define CST328_REG_TOUCH_INFO_H  0x00
+  #define CST328_REG_TOUCH_INFO_L  0xD0
+  static bool cst328BusReady = false;
+  static bool cst328Seen = false;
+
+  static bool cst328Probe() {
+    Wire.beginTransmission(CST328_ADDR);
+    return Wire.endTransmission(true) == 0;
+  }
+
+  static bool cst328ReadTouchCount(uint8_t& value) {
+    Wire.beginTransmission(CST328_ADDR);
+    Wire.write(CST328_REG_TOUCH_INFO_H);
+    Wire.write(CST328_REG_TOUCH_INFO_L);
+    if (Wire.endTransmission(false) != 0) return false;
+    if (Wire.requestFrom((uint8_t)CST328_ADDR, (uint8_t)1) != 1) return false;
+    value = Wire.read();
+    return true;
+  }
 #elif defined(USE_FT5X06)
   #include <Wire.h>
   #ifndef TOUCH_SLAVE_ADDRESS
@@ -181,6 +207,34 @@ void initButton() {
     }
     return;
   }
+#elif defined(USE_CST328)
+  if (buttonType == BTN_TOUCHSCREEN) {
+#ifdef CST328_RST
+    pinMode(CST328_RST, OUTPUT);
+    digitalWrite(CST328_RST, LOW);
+    delay(20);
+    digitalWrite(CST328_RST, HIGH);
+    delay(100);  // CST328 needs ~100ms to boot after reset
+#endif
+    Wire.begin(CST328_SDA, CST328_SCL);
+    Wire.setClock(400000);
+    cst328BusReady = true;
+    if (cst328Probe()) {
+      uint8_t touchNum = 0;
+      if (cst328ReadTouchCount(touchNum)) {
+        Serial.printf("CST328 touch initialized (I2C SDA=%d SCL=%d, touchCount=%u)\n",
+                      CST328_SDA, CST328_SCL, touchNum);
+        cst328Seen = true;
+      } else {
+        Serial.printf("CST328 detected on I2C addr 0x%02X, but register reads failed (SDA=%d SCL=%d)\n",
+                      CST328_ADDR, CST328_SDA, CST328_SCL);
+      }
+    } else {
+      Serial.printf("CST328 touch did not answer at init (addr 0x%02X, SDA=%d SCL=%d); will keep retrying at runtime\n",
+                    CST328_ADDR, CST328_SDA, CST328_SCL);
+    }
+    return;
+  }
 #elif defined(USE_FT5X06)
   if (buttonType == BTN_TOUCHSCREEN) {
     // FT5X06 uses same I2C bus as PCA9535PW IO expander (SDA=39, SCL=40)
@@ -255,6 +309,15 @@ bool wasButtonPressed() {
     if (!cst816Seen) {
       Serial.printf("CST816 touch became responsive at runtime (addr 0x%02X)\n", CST816_ADDR);
       cst816Seen = true;
+    }
+    raw = (touchNum > 0);
+#elif defined(USE_CST328)
+    if (!cst328BusReady) return false;
+    uint8_t touchNum = 0;
+    if (!cst328ReadTouchCount(touchNum)) return false;
+    if (!cst328Seen) {
+      Serial.printf("CST328 touch became responsive at runtime (addr 0x%02X)\n", CST328_ADDR);
+      cst328Seen = true;
     }
     raw = (touchNum > 0);
 #elif defined(USE_FT5X06)

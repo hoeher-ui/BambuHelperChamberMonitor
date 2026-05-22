@@ -254,6 +254,48 @@ public:
 };
 static LGFX_WS200 _tft_instance;
 
+#elif defined(BOARD_IS_WS280)
+// --- Waveshare ESP32-S3-Touch-LCD-2.8 (2.8" ST7789 240x320) -----------------
+// Community / untested. Pins from Waveshare wiki "Internal Hardware Connection".
+// LCD signals are direct ESP32-S3 GPIOs (no IO expander), separate from main I2C.
+class LGFX_WS280 : public lgfx::LGFX_Device {
+  lgfx::Panel_ST7789  _panel;
+  lgfx::Bus_SPI       _bus;
+public:
+  LGFX_WS280() {
+    {
+      auto cfg = _bus.config();
+      cfg.spi_host   = SPI2_HOST;
+      cfg.spi_mode   = 0;
+      cfg.freq_write = 80000000;
+      cfg.freq_read  = 16000000;
+      cfg.pin_sclk   = 40;
+      cfg.pin_mosi   = 45;
+      cfg.pin_miso   = -1;
+      cfg.pin_dc     = 41;
+      cfg.use_lock   = true;
+      _bus.config(cfg);
+      _panel.setBus(&_bus);
+    }
+    {
+      auto cfg = _panel.config();
+      cfg.pin_cs   = 42;
+      cfg.pin_rst  = 39;
+      cfg.pin_busy = -1;
+      cfg.memory_width  = 240;
+      cfg.memory_height = 320;
+      cfg.panel_width   = 240;
+      cfg.panel_height  = 320;
+      cfg.offset_x      = 0;
+      cfg.offset_y      = 0;
+      cfg.readable      = false;
+      _panel.config(cfg);
+    }
+    setPanel(&_panel);
+  }
+};
+static LGFX_WS280 _tft_instance;
+
 #elif defined(BOARD_IS_WS154)
 // --- Waveshare ESP32-S3-Touch-LCD-1.54 (1.54" ST7789 240x240) ---------------
 class LGFX_WS154 : public lgfx::LGFX_Device {
@@ -491,7 +533,7 @@ public:
 static LGFX_SenseCAP _tft_instance;
 
 #else
-  #error "No board variant defined. Add BOARD_IS_S3_ZERO, BOARD_IS_S3, DISPLAY_CYD, BOARD_IS_C3, BOARD_IS_WS200, BOARD_IS_WS154, BOARD_IS_JC3248W535 or BOARD_IS_SENSECAP to build_flags."
+  #error "No board variant defined. Add BOARD_IS_S3_ZERO, BOARD_IS_S3, DISPLAY_CYD, BOARD_IS_C3, BOARD_IS_WS200, BOARD_IS_WS280, BOARD_IS_WS154, BOARD_IS_JC3248W535 or BOARD_IS_SENSECAP to build_flags."
 #endif
 
 // Global pointer + reference — accessed via `tft` throughout the codebase.
@@ -768,7 +810,7 @@ void initDisplay() {
   _tft_instance.init();  // LovyanGFX configures SPI from the board class above
 #if defined(DISPLAY_CYD)
   applyCydPanelInversion();
-#elif defined(BOARD_IS_S3_ZERO) || defined(BOARD_IS_S3) || defined(BOARD_IS_C3) || defined(BOARD_IS_WS200) || defined(BOARD_IS_WS154) || defined(BOARD_IS_TZT_2432)
+#elif defined(BOARD_IS_S3_ZERO) || defined(BOARD_IS_S3) || defined(BOARD_IS_C3) || defined(BOARD_IS_WS200) || defined(BOARD_IS_WS280) || defined(BOARD_IS_WS154) || defined(BOARD_IS_TZT_2432)
   _tft_instance.invertDisplay(true);  // ST7789 requires color inversion
 #elif defined(BOARD_IS_SENSECAP)
   // ST7701S IPS inversion already handled by default Panel_ST7701 init (0x21 command).
