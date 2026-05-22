@@ -9,7 +9,7 @@
 // Global state
 PrinterSlot printers[MAX_PRINTERS];
 uint8_t activePrinterIndex = 0;
-RotationState rotState = { ROTATE_SMART, ROTATE_INTERVAL_MS, 0, 0 };
+RotationState rotState = { ROTATE_SMART, ROTATE_INTERVAL_MS, 0, 0, 0 };
 char wifiSSID[33] = {0};
 char wifiPass[65] = {0};
 uint8_t brightness = 200;

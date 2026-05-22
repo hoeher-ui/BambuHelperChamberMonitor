@@ -109,7 +109,11 @@ static void cycleDisplayedPrinterFromButton() {
     if (isPrinterConfigured(next) && next != idx) {
       rotState.displayIndex = next;
       triggerDisplayTransition();
-      rotState.lastRotateMs = millis();  // reset auto-rotate timer
+      unsigned long now = millis();
+      rotState.lastRotateMs = now;  // reset auto-rotate timer
+      // Suppress Smart snap-to-active so user can peek at an idle slot while
+      // another printer is printing/drying. Window matches the rotate interval.
+      rotState.manualOverrideUntilMs = now + rotState.intervalMs;
       finishActive = false;
       // If switching to a cloud printer in UNKNOWN state, try a refresh
       requestCloudRefresh(next);
@@ -395,7 +399,13 @@ static void updateDisplayedPrinterScreenState() {
   // Global drying-wake: if any fresh printer state is drying, leave sleep-sticky
   // screens regardless of which slot is currently displayed. Point displayIndex
   // at the dryer so the rendered drying screen reflects real state.
-  if (isSleepStickyScreen(current) && anyPrinterDrying()) {
+  // Suppressed while a manual button switch is in effect so the user's chosen
+  // idle slot is not stolen by a dryer in another slot.
+  unsigned long nowMs = millis();
+  bool manualOverride =
+      rotState.manualOverrideUntilMs != 0 &&
+      (long)(rotState.manualOverrideUntilMs - nowMs) > 0;
+  if (!manualOverride && isSleepStickyScreen(current) && anyPrinterDrying()) {
     uint8_t displayed = rotState.displayIndex < MAX_ACTIVE_PRINTERS
                         ? rotState.displayIndex : 0;
     if (!isPrinterActivityStateFresh(displayed) ||
@@ -636,12 +646,18 @@ static void handleRotation() {
     if (isPrinterActiveForDisplay(i)) activeCandidates[activeCount++] = i;
   }
 
+  bool manualOverride =
+      rotState.manualOverrideUntilMs != 0 &&
+      (long)(rotState.manualOverrideUntilMs - now) > 0;
+
   if (rotState.mode == ROTATE_SMART) {
     if (activeCount > 0) {
       // Active slots (printing or AMS drying) hide idle slots in Smart mode.
-      // A single active printer snaps immediately, independent of the timer.
-      if (activeCount == 1 ||
-          !slotListContains(activeCandidates, activeCount, rotState.displayIndex)) {
+      // A single active printer snaps immediately, independent of the timer -
+      // unless the user just pressed the button to peek at another slot.
+      if (!manualOverride &&
+          (activeCount == 1 ||
+           !slotListContains(activeCandidates, activeCount, rotState.displayIndex))) {
         if (rotState.displayIndex != activeCandidates[0]) {
           rotState.displayIndex = activeCandidates[0];
           triggerDisplayTransition();
@@ -650,6 +666,7 @@ static void handleRotation() {
         return;
       }
 
+      if (manualOverride) return;
       if (now - rotState.lastRotateMs < rotState.intervalMs) return;
       rotateWithinSlots(activeCandidates, activeCount, now);
       return;
