@@ -55,6 +55,15 @@
 // Left 240px: gauge area (same grid positions as portrait/default 240x240)
 // Right 80px: status badge + AMS vertical strip
 // ETA + bottom bar use 240x240-style Y to fit within 240px height.
+// Gauge grid positions in landscape match portrait — CYD landscape keeps the
+// same 2x3 cluster at x=42/120/198, y=60/148 and just shifts everything else
+// (ETA, bot bar) up to fit within 240px height while the right column adds
+// the AMS sidebar.
+#define LY_LAND_COL1        LY_COL1
+#define LY_LAND_COL2        LY_COL2
+#define LY_LAND_COL3        LY_COL3
+#define LY_LAND_ROW1        LY_ROW1
+#define LY_LAND_ROW2        LY_ROW2
 #define LY_LAND_GAUGE_W     240   // gauge area width (left side)
 #define LY_LAND_ETA_Y       190   // ETA zone Y (same as default 240x240)
 #define LY_LAND_ETA_H       30
@@ -163,7 +172,36 @@
 #define LY_CLK_AMPM_Y    175
 #define LY_CLK_DATE_Y    205
 
-// --- Pong/Breakout clock ---
+// --- Landscape stubs for non-printing screens ---
+// CYD / ws_lcd_200 keep portrait values in landscape (they fit fine in 240px
+// landscape height; this matches today's behaviour before LAYOUT_HAS_LANDSCAPE
+// was generalised to drive these screens). JC3248W535 overrides these with
+// real landscape values in layout_320x480.h.
+#define LY_LAND_IDLE_NAME_Y     LY_IDLE_NAME_Y
+#define LY_LAND_IDLE_STATE_Y    LY_IDLE_STATE_Y
+#define LY_LAND_IDLE_STATE_H    LY_IDLE_STATE_H
+#define LY_LAND_IDLE_STATE_TY   LY_IDLE_STATE_TY
+#define LY_LAND_IDLE_DOT_Y      LY_IDLE_DOT_Y
+#define LY_LAND_IDLE_GAUGE_R    LY_IDLE_GAUGE_R
+#define LY_LAND_IDLE_GAUGE_Y    LY_IDLE_GAUGE_Y
+#define LY_LAND_IDLE_G_OFFSET   LY_IDLE_G_OFFSET
+#define LY_LAND_IDLE_NP_TITLE_Y LY_IDLE_NP_TITLE_Y
+#define LY_LAND_IDLE_NP_WIFI_Y  LY_IDLE_NP_WIFI_Y
+#define LY_LAND_IDLE_NP_DOT_Y   LY_IDLE_NP_DOT_Y
+#define LY_LAND_IDLE_NP_MSG_Y   LY_IDLE_NP_MSG_Y
+#define LY_LAND_IDLE_NP_OPEN_Y  LY_IDLE_NP_OPEN_Y
+#define LY_LAND_IDLE_NP_IP_Y    LY_IDLE_NP_IP_Y
+#define LY_LAND_AP_TITLE_Y      LY_AP_TITLE_Y
+#define LY_LAND_AP_SSID_LBL_Y   LY_AP_SSID_LBL_Y
+#define LY_LAND_AP_SSID_Y       LY_AP_SSID_Y
+#define LY_LAND_AP_PASS_LBL_Y   LY_AP_PASS_LBL_Y
+#define LY_LAND_AP_PASS_Y       LY_AP_PASS_Y
+#define LY_LAND_AP_OPEN_Y       LY_AP_OPEN_Y
+#define LY_LAND_AP_IP_Y         LY_AP_IP_Y
+#define LY_LAND_CLK_CLEAR_Y     LY_CLK_CLEAR_Y
+#define LY_LAND_CLK_CLEAR_H     LY_CLK_CLEAR_H
+
+// --- Pong/Breakout clock (portrait, 240x320) ---
 #define LY_ARK_BRICK_ROWS   5
 #define LY_ARK_COLS          10
 #define LY_ARK_BRICK_W      22
@@ -180,5 +218,15 @@
 #define LY_ARK_COLON_W      12
 #define LY_ARK_DATE_CLR_X   40
 #define LY_ARK_DATE_CLR_W   160
+
+// --- Pong/Breakout clock (landscape, 320x240 - CYD / ws_lcd_200 rotation 1/3) ---
+// Preserves the values previously hard-coded in clock_pong.cpp so CYD/ws_lcd_200
+// landscape Pong stays pixel-identical after the gate is generalised.
+#define LY_LAND_ARK_BRICK_COLS    13
+#define LY_LAND_ARK_BRICK_START_Y 28
+#define LY_LAND_ARK_PADDLE_Y      224
+#define LY_LAND_ARK_PADDLE_W      30
+#define LY_LAND_ARK_TIME_Y        130
+#define LY_LAND_ARK_DATE_Y        8
 
 #endif // LAYOUT_240x320_H

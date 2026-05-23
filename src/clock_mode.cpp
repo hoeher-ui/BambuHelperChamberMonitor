@@ -151,7 +151,15 @@ void drawClock() {
     prevColon = false;
     prevDateBuf[0] = '\0';
     prevAmPm[0] = '\0';
-    tft.fillRect(0, LY_CLK_CLEAR_Y, sw, LY_CLK_CLEAR_H, bg);
+#if defined(LAYOUT_HAS_LANDSCAPE)
+    const bool clkLand = (sw > sh);
+    const int clkClearY = clkLand ? LY_LAND_CLK_CLEAR_Y : LY_CLK_CLEAR_Y;
+    const int clkClearH = clkLand ? LY_LAND_CLK_CLEAR_H : LY_CLK_CLEAR_H;
+#else
+    const int clkClearY = LY_CLK_CLEAR_Y;
+    const int clkClearH = LY_CLK_CLEAR_H;
+#endif
+    tft.fillRect(0, clkClearY, sw, clkClearH, bg);
     markFrameDirty();
     prevScale = scale;
     prevTimeX0 = timeX0;

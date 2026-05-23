@@ -557,12 +557,12 @@ void drawProgressArc(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t radiu
     clearGaugeCenter(gfx, cx, cy, radius, thickness);
 
     gfx.setTextDatum(MC_DATUM);
-    gfx.setTextColor(gc.value);
+    gfx.setTextColor(gc.value, bg);
     setFont(gfx, LY_GAUGE_VALUE_FONT);
     gfx.drawString(pctBuf, cx, cy - (compact ? 4 : 8) + LY_GAUGE_VALUE_NUDGE_Y);
 
     setFont(gfx, compact ? FONT_SMALL : FONT_BODY);
-    gfx.setTextColor(CLR_TEXT_DIM);
+    gfx.setTextColor(CLR_TEXT_DIM, bg);
     gfx.drawString(timeBuf, cx, cy + (compact ? 10 : 18));
 
     if (compact) {
@@ -621,12 +621,15 @@ void drawTempGauge(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t radius,
 
     gfx.setTextDatum(MC_DATUM);
     setFont(gfx, LY_GAUGE_VALUE_FONT);
-    gfx.setTextColor(valColor);
+    // Pass bg explicitly so VLW glyphs render with a solid background instead
+    // of alpha-blending against the sprite buffer — on rotated sprites the
+    // blend leaves hollow-looking glyphs (bright outline, dark interior).
+    gfx.setTextColor(valColor, bg);
     gfx.drawString(tempBuf, cx, hasTarget ? (cy - 4 + LY_GAUGE_VALUE_NUDGE_Y) : cy);
 
     if (hasTarget) {
       setFont(gfx, FONT_SMALL);
-      gfx.setTextColor(CLR_TEXT_DIM);
+      gfx.setTextColor(CLR_TEXT_DIM, bg);
       gfx.drawString(targetBuf, cx, cy + 10);
     }
 
@@ -678,7 +681,7 @@ void drawFanGauge(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t radius,
 
     gfx.setTextDatum(MC_DATUM);
     setFont(gfx, LY_GAUGE_VALUE_FONT);
-    gfx.setTextColor(valColor);
+    gfx.setTextColor(valColor, bg);
     gfx.drawString(buf, cx, cy);
 
     bool sm = dispSettings.smallLabels;
@@ -734,7 +737,7 @@ void drawHumidityGauge(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t rad
 
     gfx.setTextDatum(MC_DATUM);
     setFont(gfx, LY_GAUGE_VALUE_FONT);
-    gfx.setTextColor(present ? CLR_TEXT : CLR_TEXT_DIM);
+    gfx.setTextColor(present ? CLR_TEXT : CLR_TEXT_DIM, bg);
     gfx.drawString(buf, cx, cy);
 
     bool sm = dispSettings.smallLabels;
@@ -784,12 +787,12 @@ void drawLayerGauge(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t radius
     bool useSmall = (digits > 7);
 
     setFont(gfx, useSmall ? FONT_BODY : LY_GAUGE_VALUE_FONT);
-    gfx.setTextColor(CLR_TEXT);
+    gfx.setTextColor(CLR_TEXT, bg);
     gfx.drawString(layerBuf, cx, hasTot ? (cy - 4 + LY_GAUGE_VALUE_NUDGE_Y) : cy);
 
     if (hasTot) {
       setFont(gfx, useSmall ? FONT_SMALL : FONT_BODY);
-      gfx.setTextColor(CLR_TEXT_DIM);
+      gfx.setTextColor(CLR_TEXT_DIM, bg);
       gfx.drawString(totalBuf, cx, cy + (useSmall ? 8 : 10));
     }
 
@@ -835,7 +838,7 @@ void drawClockWidget(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t radiu
 
     gfx.setTextDatum(MC_DATUM);
     setFont(gfx, LY_GAUGE_VALUE_FONT);
-    gfx.setTextColor(CLR_TEXT);
+    gfx.setTextColor(CLR_TEXT, bg);
     gfx.drawString(timeBuf, cx, cy);
 
     bool sm = dispSettings.smallLabels;

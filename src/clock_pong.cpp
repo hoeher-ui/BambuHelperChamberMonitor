@@ -172,23 +172,23 @@ static void refreshPongLayout() {
     LY_ARK_DATE_CLR_W
   };
 
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_LANDSCAPE)
   const int16_t scrW = (int16_t)tft.width();
   const int16_t scrH = (int16_t)tft.height();
   if (scrW > 0 && scrH > 0) {
     next.screenW = scrW;
     next.screenH = scrH;
     if (scrW > scrH) {
-      next.brickCols = ARK_LAND_BRICK_COLS;
+      next.brickCols   = LY_LAND_ARK_BRICK_COLS;
       next.brickStartX = (scrW - (next.brickCols * ARK_BRICK_W +
                                   (next.brickCols - 1) * ARK_BRICK_GAP)) / 2;
-      next.brickStartY = 28;
-      next.paddleY = 224;
-      next.paddleW = 30;
-      next.timeY = 130;
-      next.dateY = 8;
-      next.dateClearX = 0;
-      next.dateClearW = scrW;
+      next.brickStartY = LY_LAND_ARK_BRICK_START_Y;
+      next.paddleY     = LY_LAND_ARK_PADDLE_Y;
+      next.paddleW     = LY_LAND_ARK_PADDLE_W;
+      next.timeY       = LY_LAND_ARK_TIME_Y;
+      next.dateY       = LY_LAND_ARK_DATE_Y;
+      next.dateClearX  = 0;
+      next.dateClearW  = scrW;
     }
   }
 #endif

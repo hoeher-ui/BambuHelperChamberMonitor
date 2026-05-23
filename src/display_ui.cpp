@@ -593,18 +593,11 @@ void flushFrame() {
 #endif
 }
 
-// JC3248W535 currently only supports portrait rotations (0 and 2) in the
-// sprite-push architecture — layout_320x480.h is hard-coded portrait and no
-// landscape layout exists. Snap odd rotations to 0 with a Serial warning.
+// Pass-through hook for any future board-level rotation constraints. All four
+// rotations are supported on every current board; JC3248W535 applies rotation
+// at the sprite level (panel MADCTL stays at 0) while CYD/ws_lcd_200 use real
+// hardware MADCTL via LovyanGFX setRotation().
 static uint8_t sanitizeRotation(uint8_t r) {
-#if defined(BOARD_IS_JC3248W535)
-  if (r == 1 || r == 3) {
-    Serial.printf("Display: rotation %u unsupported on JC3248W535 "
-                  "(landscape layout not yet available); snapping to 0\n",
-                  (unsigned)r);
-    return 0;
-  }
-#endif
   return r;
 }
 
@@ -908,6 +901,14 @@ void applyDisplaySettings() {
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
 #endif
+#if defined(BOARD_IS_JC3248W535)
+  // Sprite path: panel MADCTL stays at 0, but the 320x480 PSRAM sprite has
+  // stale pixels at the "extra" edge when flipping between portrait and
+  // landscape. Wipe the whole sprite at the current rotation before applying
+  // the new one so no garbage survives the flip.
+  tft.fillScreen(TFT_BLACK);
+  markFrameDirty();
+#endif
   tft.setRotation(sanitizeRotation(dispSettings.rotation));
 #if defined(DISPLAY_CYD)
   applyCydPanelInversion();
@@ -985,15 +986,34 @@ static void drawAPMode() {
   const int16_t cx = uiW() / 2;
   tft.setTextDatum(MC_DATUM);
 
+#if defined(LAYOUT_HAS_LANDSCAPE)
+  const bool apLand   = isLandscape();
+  const int16_t apTitleY    = apLand ? LY_LAND_AP_TITLE_Y    : LY_AP_TITLE_Y;
+  const int16_t apSsidLblY  = apLand ? LY_LAND_AP_SSID_LBL_Y : LY_AP_SSID_LBL_Y;
+  const int16_t apSsidY     = apLand ? LY_LAND_AP_SSID_Y     : LY_AP_SSID_Y;
+  const int16_t apPassLblY  = apLand ? LY_LAND_AP_PASS_LBL_Y : LY_AP_PASS_LBL_Y;
+  const int16_t apPassY     = apLand ? LY_LAND_AP_PASS_Y     : LY_AP_PASS_Y;
+  const int16_t apOpenY     = apLand ? LY_LAND_AP_OPEN_Y     : LY_AP_OPEN_Y;
+  const int16_t apIpY       = apLand ? LY_LAND_AP_IP_Y       : LY_AP_IP_Y;
+#else
+  const int16_t apTitleY    = LY_AP_TITLE_Y;
+  const int16_t apSsidLblY  = LY_AP_SSID_LBL_Y;
+  const int16_t apSsidY     = LY_AP_SSID_Y;
+  const int16_t apPassLblY  = LY_AP_PASS_LBL_Y;
+  const int16_t apPassY     = LY_AP_PASS_Y;
+  const int16_t apOpenY     = LY_AP_OPEN_Y;
+  const int16_t apIpY       = LY_AP_IP_Y;
+#endif
+
   // Title
   tft.setTextColor(CLR_GREEN, CLR_BG);
   setFont(tft, FONT_LARGE);
-  tft.drawString("WiFi Setup", cx, LY_AP_TITLE_Y);
+  tft.drawString("WiFi Setup", cx, apTitleY);
 
   // Instructions
   setFont(tft, FONT_BODY);
   tft.setTextColor(CLR_TEXT, CLR_BG);
-  tft.drawString("Connect to WiFi:", cx, LY_AP_SSID_LBL_Y);
+  tft.drawString("Connect to WiFi:", cx, apSsidLblY);
 
   // AP SSID
   tft.setTextColor(CLR_CYAN, CLR_BG);
@@ -1001,21 +1021,21 @@ static void drawAPMode() {
   char ssid[32];
   uint32_t mac = (uint32_t)(ESP.getEfuseMac() & 0xFFFF);
   snprintf(ssid, sizeof(ssid), "%s%04X", WIFI_AP_PREFIX, mac);
-  tft.drawString(ssid, cx, LY_AP_SSID_Y);
+  tft.drawString(ssid, cx, apSsidY);
 
   // Password
   setFont(tft, FONT_BODY);
   tft.setTextColor(CLR_TEXT_DIM, CLR_BG);
-  tft.drawString("Password:", cx, LY_AP_PASS_LBL_Y);
+  tft.drawString("Password:", cx, apPassLblY);
   tft.setTextColor(CLR_TEXT, CLR_BG);
-  tft.drawString(WIFI_AP_PASSWORD, cx, LY_AP_PASS_Y);
+  tft.drawString(WIFI_AP_PASSWORD, cx, apPassY);
 
   // IP
   tft.setTextColor(CLR_TEXT_DIM, CLR_BG);
-  tft.drawString("Then open:", cx, LY_AP_OPEN_Y);
+  tft.drawString("Then open:", cx, apOpenY);
   tft.setTextColor(CLR_ORANGE, CLR_BG);
   setFont(tft, FONT_LARGE);
-  tft.drawString("192.168.4.1", cx, LY_AP_IP_Y);
+  tft.drawString("192.168.4.1", cx, apIpY);
 }
 
 // ---------------------------------------------------------------------------
@@ -1218,24 +1238,41 @@ static void drawIdleNoPrinter() {
   const int16_t cx = uiW() / 2;
   tft.setTextDatum(MC_DATUM);
 
+#if defined(LAYOUT_HAS_LANDSCAPE)
+  const bool npLand = isLandscape();
+  const int16_t npTitleY = npLand ? LY_LAND_IDLE_NP_TITLE_Y : LY_IDLE_NP_TITLE_Y;
+  const int16_t npWifiY  = npLand ? LY_LAND_IDLE_NP_WIFI_Y  : LY_IDLE_NP_WIFI_Y;
+  const int16_t npDotY   = npLand ? LY_LAND_IDLE_NP_DOT_Y   : LY_IDLE_NP_DOT_Y;
+  const int16_t npMsgY   = npLand ? LY_LAND_IDLE_NP_MSG_Y   : LY_IDLE_NP_MSG_Y;
+  const int16_t npOpenY  = npLand ? LY_LAND_IDLE_NP_OPEN_Y  : LY_IDLE_NP_OPEN_Y;
+  const int16_t npIpY    = npLand ? LY_LAND_IDLE_NP_IP_Y    : LY_IDLE_NP_IP_Y;
+#else
+  const int16_t npTitleY = LY_IDLE_NP_TITLE_Y;
+  const int16_t npWifiY  = LY_IDLE_NP_WIFI_Y;
+  const int16_t npDotY   = LY_IDLE_NP_DOT_Y;
+  const int16_t npMsgY   = LY_IDLE_NP_MSG_Y;
+  const int16_t npOpenY  = LY_IDLE_NP_OPEN_Y;
+  const int16_t npIpY    = LY_IDLE_NP_IP_Y;
+#endif
+
   tft.setTextColor(CLR_GREEN, CLR_BG);
   setFont(tft, FONT_LARGE);
-  tft.drawString("BambuHelper", cx, LY_IDLE_NP_TITLE_Y);
+  tft.drawString("BambuHelper", cx, npTitleY);
 
   tft.setTextColor(CLR_TEXT, CLR_BG);
   setFont(tft, FONT_BODY);
-  tft.drawString("WiFi Connected", cx, LY_IDLE_NP_WIFI_Y);
+  tft.drawString("WiFi Connected", cx, npWifiY);
 
-  tft.fillCircle(cx, LY_IDLE_NP_DOT_Y, 5, CLR_GREEN);
+  tft.fillCircle(cx, npDotY, 5, CLR_GREEN);
 
   tft.setTextColor(CLR_TEXT_DIM, CLR_BG);
   setFont(tft, FONT_BODY);
-  tft.drawString("No printer configured", cx, LY_IDLE_NP_MSG_Y);
-  tft.drawString("Open in browser:", cx, LY_IDLE_NP_OPEN_Y);
+  tft.drawString("No printer configured", cx, npMsgY);
+  tft.drawString("Open in browser:", cx, npOpenY);
 
   tft.setTextColor(CLR_ORANGE, CLR_BG);
   setFont(tft, FONT_LARGE);
-  tft.drawString(WiFi.localIP().toString().c_str(), cx, LY_IDLE_NP_IP_Y);
+  tft.drawString(WiFi.localIP().toString().c_str(), cx, npIpY);
 }
 
 // ---------------------------------------------------------------------------
@@ -1407,18 +1444,24 @@ static void drawIdleDrying(PrinterSlot& p) {
     tft.drawString(unitName, cx, 40);
   }
 
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_LANDSCAPE)
   if (land) {
-    // === 320x240 landscape: temp left, drying facts right, ETA above bottom ===
+    // === Landscape: temp left, drying facts right, ETA above bottom ===
+    // X positions are scrW-proportional so CYD/ws_lcd_200 (320 wide) stays
+    // pixel-identical (tempCx=88, infoCx=238) while JC3248W535 (480 wide)
+    // gets a balanced layout (tempCx=128, infoCx=358).
+    const int16_t halfW = scrW / 2;
+    const int16_t tempCx = scrW / 4 + 8;
+    const int16_t infoCx = scrW * 3 / 4 - 2;
+
     if (unitChanged) {
       tft.fillRect(0, 55, scrW, LY_LAND_ETA_Y - 55, CLR_BG);
     }
 
     if (tempChanged) {
-      if (!unitChanged) tft.fillRect(0, 70, 160, 72, CLR_BG);
+      if (!unitChanged) tft.fillRect(0, 70, halfW, 72, CLR_BG);
       char tempBuf[14];
       snprintf(tempBuf, sizeof(tempBuf), "%d", tempShown);
-      const int16_t tempCx = 88;
       tft.setTextDatum(MC_DATUM);
       setFont(tft, FONT_7SEG);
       tft.setTextColor(CLR_ORANGE, CLR_BG);
@@ -1428,9 +1471,8 @@ static void drawIdleDrying(PrinterSlot& p) {
       drawCelsiusUnit(tempCx - 10 + tempW / 2 + 2, 98, CLR_ORANGE);
     }
 
-    const int16_t infoCx = 238;
     if (remainChanged) {
-      if (!unitChanged) tft.fillRect(160, 58, scrW - 160, 54, CLR_BG);
+      if (!unitChanged) tft.fillRect(halfW, 58, scrW - halfW, 54, CLR_BG);
       char timeBuf[16];
       uint16_t h = u.dryRemainMin / 60;
       uint16_t m = u.dryRemainMin % 60;
@@ -1449,7 +1491,7 @@ static void drawIdleDrying(PrinterSlot& p) {
     }
 
     if (humidityChanged) {
-      if (!unitChanged) tft.fillRect(160, 114, scrW - 160, 54, CLR_BG);
+      if (!unitChanged) tft.fillRect(halfW, 114, scrW - halfW, 54, CLR_BG);
       char humBuf[8];
       snprintf(humBuf, sizeof(humBuf), "%d%%", u.humidityRaw);
 
@@ -1558,7 +1600,7 @@ static void drawIdleDrying(PrinterSlot& p) {
   // === ETA ===
   if (remainChanged) {
     markFrameDirty();
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_LANDSCAPE)
     const int16_t etaY = land ? LY_LAND_ETA_Y : LY_ETA_Y;
     const int16_t etaH = land ? LY_LAND_ETA_H : LY_ETA_H;
     const int16_t etaTextY = land ? LY_LAND_ETA_TEXT_Y : LY_ETA_TEXT_Y;
@@ -1614,7 +1656,7 @@ static void drawIdleDrying(PrinterSlot& p) {
 
   // === Bottom bar — connected indicator ===
   {
-#if defined(DISPLAY_240x320)
+#if defined(LAYOUT_HAS_LANDSCAPE)
     const int16_t botY = land ? LY_LAND_BOT_Y : LY_BOT_Y;
     const int16_t botH = land ? LY_LAND_BOT_H : LY_BOT_H;
     const int16_t botCY = land ? LY_LAND_BOT_CY : LY_BOT_CY;
@@ -1650,6 +1692,9 @@ static void drawAmsStrip(const AmsState& ams, int16_t zoneY, int16_t zoneH, int1
                          int16_t barMaxW = LY_AMS_BAR_MAX_W,
                          bool showFilamentTypes = false);
 static bool useEnhancedPortraitAms(const AmsState& ams);
+#endif
+#if defined(LAYOUT_HAS_AMS_STRIP)
+static void drawAmsZone(const BambuState& s, bool force);
 #endif
 
 // Helper macro for the 240x240-only AMS-view feature (replaces gauge row 2
@@ -1710,15 +1755,44 @@ static void drawIdle() {
     forceRedraw = true;
   }
 
-  // Effective screen dimensions — idle uses full screen (no AMS sidebar)
+  // Effective screen dimensions. In landscape, always reserve the right
+  // column for the AMS sidebar even when no AMS is present yet — otherwise
+  // cx flips between full-width centre and gauge-area centre the moment
+  // MQTT data arrives, leaving ghost gauges at the previous position.
+  // Matches the printing screen, which keeps the sidebar geometry fixed.
 #if defined(LAYOUT_HAS_AMS_STRIP)
-  const int16_t scrW = (int16_t)tft.width();
+  const bool idleLandAmsSidebar = isLandscape();
+  const int16_t fullW = (int16_t)tft.width();
+  const int16_t scrW = idleLandAmsSidebar ? (int16_t)LY_LAND_GAUGE_W : fullW;
   const int16_t scrH = (int16_t)tft.height();
 #else
   const int16_t scrW = SCREEN_W;
   const int16_t scrH = SCREEN_H;
 #endif
   const int16_t cx = scrW / 2;
+
+  // Landscape Y-coordinate selector (boards without LAYOUT_HAS_LANDSCAPE pin
+  // these to portrait).
+#if defined(LAYOUT_HAS_LANDSCAPE)
+  const bool idleLand           = isLandscape();
+  const int16_t lyIdleNameY     = idleLand ? LY_LAND_IDLE_NAME_Y    : LY_IDLE_NAME_Y;
+  const int16_t lyIdleStateY    = idleLand ? LY_LAND_IDLE_STATE_Y   : LY_IDLE_STATE_Y;
+  const int16_t lyIdleStateH    = idleLand ? LY_LAND_IDLE_STATE_H   : LY_IDLE_STATE_H;
+  const int16_t lyIdleStateTy   = idleLand ? LY_LAND_IDLE_STATE_TY  : LY_IDLE_STATE_TY;
+  const int16_t lyIdleDotY      = idleLand ? LY_LAND_IDLE_DOT_Y     : LY_IDLE_DOT_Y;
+  const int16_t lyIdleGaugeR    = idleLand ? LY_LAND_IDLE_GAUGE_R   : LY_IDLE_GAUGE_R;
+  const int16_t lyIdleGaugeY    = idleLand ? LY_LAND_IDLE_GAUGE_Y   : LY_IDLE_GAUGE_Y;
+  const int16_t lyIdleGOffset   = idleLand ? LY_LAND_IDLE_G_OFFSET  : LY_IDLE_G_OFFSET;
+#else
+  const int16_t lyIdleNameY     = LY_IDLE_NAME_Y;
+  const int16_t lyIdleStateY    = LY_IDLE_STATE_Y;
+  const int16_t lyIdleStateH    = LY_IDLE_STATE_H;
+  const int16_t lyIdleStateTy   = LY_IDLE_STATE_TY;
+  const int16_t lyIdleDotY      = LY_IDLE_DOT_Y;
+  const int16_t lyIdleGaugeR    = LY_IDLE_GAUGE_R;
+  const int16_t lyIdleGaugeY    = LY_IDLE_GAUGE_Y;
+  const int16_t lyIdleGOffset   = LY_IDLE_G_OFFSET;
+#endif
 
   bool animating = tickGaugeSmooth(s, forceRedraw);
   gaugesAnimating = animating;
@@ -1740,7 +1814,7 @@ static void drawIdle() {
     tft.setTextColor(CLR_GREEN, CLR_BG);
     setFont(tft, FONT_LARGE);
     const char* name = (p.config.name[0] != '\0') ? p.config.name : "Bambu P1S";
-    tft.drawString(name, cx, LY_IDLE_NAME_Y);
+    tft.drawString(name, cx, lyIdleNameY);
     markFrameDirty();
   }
 
@@ -1759,14 +1833,14 @@ static void drawIdle() {
     } else if (s.gcodeStateId == GCODE_UNKNOWN) {
       stateStr = "Waiting...";
     }
-    tft.fillRect(0, LY_IDLE_STATE_Y, scrW, LY_IDLE_STATE_H, CLR_BG);
+    tft.fillRect(0, lyIdleStateY, scrW, lyIdleStateH, CLR_BG);
     tft.setTextColor(stateColor, CLR_BG);
-    tft.drawString(stateStr, cx, LY_IDLE_STATE_TY);
+    tft.drawString(stateStr, cx, lyIdleStateTy);
   }
 
   // Connected indicator
   if (connChanged) {
-    tft.fillCircle(cx, LY_IDLE_DOT_Y, 5, s.connected ? CLR_GREEN : CLR_RED);
+    tft.fillCircle(cx, lyIdleDotY, 5, s.connected ? CLR_GREEN : CLR_RED);
     markFrameDirty();
   }
 
@@ -1783,7 +1857,7 @@ static void drawIdle() {
                     isCloudMode(p.config.mode) && s.connected;
     if (stateChanged || showHint != hintShown) {
       markFrameDirty();
-      const int16_t hintY = LY_IDLE_DOT_Y + 15;
+      const int16_t hintY = lyIdleDotY + 15;
       tft.fillRect(0, hintY - 6, scrW, 14, CLR_BG);
       if (showHint) {
         setFont(tft, FONT_SMALL);
@@ -1798,21 +1872,27 @@ static void drawIdle() {
   // Nozzle temp gauge
   if (tempChanged) {
     markFrameDirty();
-    drawTempGauge(tft, cx - LY_IDLE_G_OFFSET, LY_IDLE_GAUGE_Y, LY_IDLE_GAUGE_R,
+    drawTempGauge(tft, cx - lyIdleGOffset, lyIdleGaugeY, lyIdleGaugeR,
                   s.nozzleTemp, s.nozzleTarget, 300.0f,
                   dispSettings.nozzle.arc, nozzleLabel(s), nullptr, forceRedraw,
                   &dispSettings.nozzle, smoothNozzleTemp);
 
     // Bed temp gauge
-    drawTempGauge(tft, cx + LY_IDLE_G_OFFSET, LY_IDLE_GAUGE_Y, LY_IDLE_GAUGE_R,
+    drawTempGauge(tft, cx + lyIdleGOffset, lyIdleGaugeY, lyIdleGaugeR,
                   s.bedTemp, s.bedTarget, 120.0f,
                   dispSettings.bed.arc, "Bed", nullptr, forceRedraw,
                   &dispSettings.bed, smoothBedTemp);
   }
 
-  // AMS strip on idle (portrait, layouts with permanent AMS strip)
+  // AMS on idle (boards with permanent AMS strip)
+  //  Portrait: horizontal strip below the gauges.
+  //  Landscape: right-column vertical sidebar (drawAmsZone handles it).
 #if defined(LAYOUT_HAS_AMS_STRIP)
-  if (s.ams.present && s.ams.unitCount > 0 && !isLandscape()) {
+  if (s.ams.present && s.ams.unitCount > 0 && isLandscape()) {
+    // Reuse the printing screen's landscape sidebar renderer. Its internal
+    // caches gate the redraw, so this is a no-op when nothing changed.
+    drawAmsZone(s, forceRedraw);
+  } else if (s.ams.present && s.ams.unitCount > 0 && !isLandscape()) {
     static uint8_t  prevIdleAmsCount = 0;
     static uint8_t  prevIdleAmsActive = 255;
     static uint16_t prevIdleAmsColors[AMS_MAX_TRAYS] = {0};
@@ -2669,9 +2749,30 @@ static void drawPrinting() {
 
   // === Configurable 2x3 gauge grid ===
   {
-    static const int16_t slotX[GAUGE_SLOT_COUNT] = { LY_COL1, LY_COL2, LY_COL3, LY_COL1, LY_COL2, LY_COL3 };
-    static const int16_t slotY[GAUGE_SLOT_COUNT] = { LY_ROW1, LY_ROW1, LY_ROW1, LY_ROW2, LY_ROW2, LY_ROW2 };
+    // Slot positions are rotation-dependent (LY_LAND_* on landscape boards),
+    // so build the tables at call time instead of caching as static const.
+#if defined(LAYOUT_HAS_LANDSCAPE)
+    const bool gaugeLand = isLandscape();
+    const int16_t c0 = gaugeLand ? LY_LAND_COL1 : LY_COL1;
+    const int16_t c1 = gaugeLand ? LY_LAND_COL2 : LY_COL2;
+    const int16_t c2 = gaugeLand ? LY_LAND_COL3 : LY_COL3;
+    const int16_t r0 = gaugeLand ? LY_LAND_ROW1 : LY_ROW1;
+    const int16_t r1 = gaugeLand ? LY_LAND_ROW2 : LY_ROW2;
+#else
+    const int16_t c0 = LY_COL1, c1 = LY_COL2, c2 = LY_COL3;
+    const int16_t r0 = LY_ROW1, r1 = LY_ROW2;
+#endif
+    const int16_t slotX[GAUGE_SLOT_COUNT] = { c0, c1, c2, c0, c1, c2 };
+    const int16_t slotY[GAUGE_SLOT_COUNT] = { r0, r0, r0, r1, r1, r1 };
     static uint8_t prevSlotTypes[GAUGE_SLOT_COUNT] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+    // Invalidate per-slot redraw cache when rotation flips, so the gauges
+    // get a clean redraw at their new (x, y) instead of leaving artefacts
+    // at the old positions.
+    static uint8_t prevSlotRotation = 0xFF;
+    if (prevSlotRotation != dispSettings.rotation) {
+      for (uint8_t i = 0; i < GAUGE_SLOT_COUNT; i++) prevSlotTypes[i] = 0xFF;
+      prevSlotRotation = dispSettings.rotation;
+    }
 
     for (uint8_t si = 0; si < GAUGE_SLOT_COUNT; si++) {
       // Skip row-2 slots when AMS view replaces them. Mark prevSlotTypes as

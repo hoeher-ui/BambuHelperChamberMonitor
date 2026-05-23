@@ -5,12 +5,16 @@
 // Redesigned layout that uses the extra screen real estate - does not simply
 // stretch the 240x320 layout. Gauges are larger, AMS strip is always visible,
 // and the ETA / bottom status areas are generously sized.
+//
+// Landscape (480x320) mirrors the CYD pattern: 360 px gauge area on the left,
+// 120 px AMS sidebar on the right. Sprite-backed rendering applies the
+// rotation at the sprite level (LovyanGFX setRotation on the 320x480 buffer);
+// pushRawPixels then dumps the buffer in native memory order and the panel
+// shows the correctly-rotated image.
 
 // --- Feature flags ---
-// Permanent AMS strip below the gauges. Sprite-backed rendering means
-// LAYOUT_HAS_LANDSCAPE is intentionally NOT set: rotation is applied at the
-// sprite level and the layout stays portrait.
 #define LAYOUT_HAS_AMS_STRIP  1
+#define LAYOUT_HAS_LANDSCAPE  1
 
 // --- Screen dimensions ---
 #define LY_W    320
@@ -146,38 +150,106 @@
 #define LY_CLK_AMPM_Y    265
 #define LY_CLK_DATE_Y    310
 
-// --- Landscape-mode stubs (never used at runtime) ---
-// This layout has no landscape variant - LAYOUT_HAS_LANDSCAPE is not set, so
-// isLandscape() always returns false. display_ui.cpp still references these
-// inside `land ? LY_LAND_X : LY_X` ternaries that share code with 240x320,
-// so they must compile. Mapping them to their portrait equivalents keeps the
-// generated code identical to the portrait branch.
-#define LY_LAND_GAUGE_W       LY_W
-#define LY_LAND_ETA_Y         LY_ETA_Y
-#define LY_LAND_ETA_H         LY_ETA_H
-#define LY_LAND_ETA_TEXT_Y    LY_ETA_TEXT_Y
-#define LY_LAND_BOT_Y         LY_BOT_Y
-#define LY_LAND_BOT_H         LY_BOT_H
-#define LY_LAND_BOT_CY        LY_BOT_CY
-#define LY_LAND_AMS_X         0
-#define LY_LAND_AMS_W         0
-#define LY_LAND_AMS_TOP       0
-#define LY_LAND_AMS_BOT_FULL  0
-#define LY_LAND_AMS_BOT_SHORT 0
-#define LY_LAND_BADGE_Y       0
-#define LY_LAND_BADGE_H       0
-#define LY_LAND_BADGE_CY      0
-#define LY_LAND_FIN_GL        LY_FIN_GL
-#define LY_LAND_FIN_GR        LY_FIN_GR
-#define LY_LAND_FIN_GY        LY_FIN_GY
-#define LY_LAND_FIN_TEXT_Y    LY_FIN_TEXT_Y
-#define LY_LAND_FIN_FILE_Y    LY_FIN_FILE_Y
-#define LY_LAND_FIN_KWH_Y     LY_FIN_KWH_Y
-#define LY_LAND_FIN_BOT_Y     LY_FIN_BOT_Y
-#define LY_LAND_FIN_BOT_H     LY_FIN_BOT_H
-#define LY_LAND_FIN_WIFI_Y    LY_FIN_WIFI_Y
+// ===========================================================================
+// LANDSCAPE (480x320) - sprite-rotated. Logical canvas is 480 wide x 320 tall.
+// Layout pattern: left 360 px = gauge area + ETA + bottom bar; right 120 px =
+// status badge (top) + AMS vertical sidebar (below badge). The print-screen
+// file-name line is intentionally dropped in landscape to keep r=48 gauges
+// without compressing them; the 320 px height is too tight to fit it cleanly
+// next to the ETA + bottom bar.
+// ===========================================================================
 
-// --- Pong/Breakout clock (scaled for 320x480) ---
+// --- Gauge area width (left column reserved for gauges + ETA + bot bar) ---
+#define LY_LAND_GAUGE_W       360
+
+// --- Printing: 2x3 gauge grid (landscape) ---
+// Same r=48 / FONT_XLARGE as portrait. Six gauges fit in the 360x215 left
+// area with ~9 px gap between row 1 label band (ends y=135) and row 2 gauge
+// top (y=144). Label offset is +47 from slot centre for !smallLabels.
+#define LY_LAND_COL1          60
+#define LY_LAND_COL2          180
+#define LY_LAND_COL3          300
+#define LY_LAND_ROW1          76     // gauge spans y=28..124, label band 111..135
+#define LY_LAND_ROW2          192    // gauge spans y=144..240, label band 227..251
+
+// --- AMS sidebar (landscape) ---
+#define LY_LAND_AMS_X         365    // 5 px gap from right edge of gauge area (348)
+#define LY_LAND_AMS_W         110    // sidebar width; 5 px right margin
+#define LY_LAND_AMS_TOP       35     // below header badge band (ends y=30)
+// 0-2 AMS units: column ends 5 px above bot bar so bar can sweep full 480 px.
+// 3-4 AMS units: column runs to screen bottom; bot bar limited to gauge area.
+#define LY_LAND_AMS_BOT_SHORT 280
+#define LY_LAND_AMS_BOT_FULL  318
+
+// --- Header badge (landscape, right column) ---
+#define LY_LAND_BADGE_Y       7
+#define LY_LAND_BADGE_H       23
+#define LY_LAND_BADGE_CY      18
+
+// --- Printing: ETA / info zone (landscape) ---
+#define LY_LAND_ETA_Y         252
+#define LY_LAND_ETA_H         28
+#define LY_LAND_ETA_TEXT_Y    266
+
+// --- Printing: bottom status bar (landscape) ---
+#define LY_LAND_BOT_Y         285
+#define LY_LAND_BOT_H         35
+#define LY_LAND_BOT_CY        302
+#define LY_LAND_WIFI_Y        302
+
+// --- Finished screen (landscape) ---
+// Gauges side-by-side, centred cluster on the gauge-area mid-line (x=180 since
+// AMS sidebar is not drawn on the finished screen). With r=48 the pair sits at
+// x=130 and x=350 (full 480 px width used; finished screen does not reserve
+// the right column).
+#define LY_LAND_FIN_GL        130
+#define LY_LAND_FIN_GR        350
+#define LY_LAND_FIN_GY        80
+#define LY_LAND_FIN_TEXT_Y    160
+#define LY_LAND_FIN_FILE_Y    200
+#define LY_LAND_FIN_KWH_Y     230
+#define LY_LAND_FIN_BOT_Y     285
+#define LY_LAND_FIN_BOT_H     35
+#define LY_LAND_FIN_WIFI_Y    302
+
+// --- Idle screen (with printer, landscape) ---
+// Two-gauge layout centred in the 360 px gauge area when AMS sidebar visible,
+// or in the full 480 px canvas when no AMS. Code in drawIdle() picks the
+// effective scrW dynamically and uses these Y values either way.
+#define LY_LAND_IDLE_NAME_Y     30
+#define LY_LAND_IDLE_STATE_Y    60
+#define LY_LAND_IDLE_STATE_H    24
+#define LY_LAND_IDLE_STATE_TY   72
+#define LY_LAND_IDLE_DOT_Y      100
+#define LY_LAND_IDLE_GAUGE_R    46
+#define LY_LAND_IDLE_GAUGE_Y    195
+#define LY_LAND_IDLE_G_OFFSET   72
+
+// --- Idle screen (no printer, landscape) ---
+#define LY_LAND_IDLE_NP_TITLE_Y 40
+#define LY_LAND_IDLE_NP_WIFI_Y  85
+#define LY_LAND_IDLE_NP_DOT_Y   115
+#define LY_LAND_IDLE_NP_MSG_Y   155
+#define LY_LAND_IDLE_NP_OPEN_Y  195
+#define LY_LAND_IDLE_NP_IP_Y    240
+
+// --- AP mode screen (landscape) ---
+#define LY_LAND_AP_TITLE_Y      30
+#define LY_LAND_AP_SSID_LBL_Y   70
+#define LY_LAND_AP_SSID_Y       100
+#define LY_LAND_AP_PASS_LBL_Y   140
+#define LY_LAND_AP_PASS_Y       170
+#define LY_LAND_AP_OPEN_Y       210
+#define LY_LAND_AP_IP_Y         245
+
+// --- Simple clock (centred in 320 px landscape height) ---
+#define LY_LAND_CLK_CLEAR_Y     50
+#define LY_LAND_CLK_CLEAR_H     220
+#define LY_LAND_CLK_TIME_Y      140
+#define LY_LAND_CLK_AMPM_Y      195
+#define LY_LAND_CLK_DATE_Y      235
+
+// --- Pong/Breakout clock (portrait, scaled for 320x480) ---
 #define LY_ARK_BRICK_ROWS   5
 #define LY_ARK_COLS         10
 #define LY_ARK_BRICK_W      30        // 10 cols * 30 + 9 gaps * 2 = 318 (fits 320)
@@ -194,5 +266,15 @@
 #define LY_ARK_COLON_W      16
 #define LY_ARK_DATE_CLR_X   50
 #define LY_ARK_DATE_CLR_W   220
+
+// --- Pong/Breakout clock (landscape 480x320) ---
+// 13 cols of 30 px bricks + 12 gaps of 2 px = 414 px; centred at startX=33.
+// Paddle near bottom of 320 px play field, time centred vertically.
+#define LY_LAND_ARK_BRICK_COLS    13
+#define LY_LAND_ARK_BRICK_START_Y 40
+#define LY_LAND_ARK_PADDLE_Y      290
+#define LY_LAND_ARK_PADDLE_W      50
+#define LY_LAND_ARK_TIME_Y        170
+#define LY_LAND_ARK_DATE_Y        10
 
 #endif // LAYOUT_320x480_H
