@@ -2157,9 +2157,13 @@ function refreshLiveStats(){
 /* ============ Settings export / import ============ */
 function exportSettings(){
   fetch('/settings/export').then(function(r){return r.text();}).then(function(t){
+    var d = new Date();
+    var pad = function(n){return (n<10?'0':'')+n;};
+    var ts = d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) + '_' +
+             pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
     var a = document.createElement('a');
     a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(t);
-    a.download = 'bambuhelper_settings.json';
+    a.download = 'bambuhelper_settings_' + ts + '.json';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }).catch(function(){showToast('Export failed');});
 }
