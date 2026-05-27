@@ -40,6 +40,9 @@
             <a href="#after-head" class="toc-item" data-target="after-head">
               <span class="toc-num">02</span><span>After flashing</span>
             </a>
+            <a href="#monitor-head" class="toc-item" data-target="monitor-head">
+              <span class="toc-num">03</span><span>View serial logs</span>
+            </a>
           </nav>
 
           <nav class="rail-links" aria-label="Project links">
@@ -201,6 +204,30 @@
           </article>
 
           <p class="hint">Either way, the device reboots, joins your WiFi, and starts monitoring the printer.</p>
+        </section>
+
+        <!-- ────────── 03 Serial monitor ────────── -->
+        <section class="panel" id="panel-monitor" aria-labelledby="monitor-head">
+          <header class="panel-head">
+            <span class="num">03</span>
+            <h2 id="monitor-head">View serial logs</h2>
+          </header>
+
+          <p class="lede">Reading the board's serial output is the fastest way to capture a crash, a stack trace, or WiFi/TLS errors for a bug report. Plug the board in over USB, click Connect, and pick the same serial port you'd use for flashing.</p>
+
+          <p class="status-line" id="monitor-status" role="status"></p>
+
+          <div class="monitor-row">
+            <button id="monitor-connect" class="btn-monitor" type="button">Connect</button>
+            <button id="monitor-disconnect" class="btn-monitor btn-ghost" type="button" disabled>Disconnect</button>
+            <button id="monitor-export" class="btn-monitor btn-ghost" type="button" disabled>Export</button>
+            <button id="monitor-clear" class="btn-monitor btn-ghost" type="button" disabled>Clear</button>
+          </div>
+
+          <pre id="monitor-output" class="monitor-output" aria-live="polite" aria-label="Serial output"></pre>
+
+          <p class="hint">Only one program can hold the serial port at a time - close PlatformIO Monitor or Arduino IDE first, and don't click Install during a monitor session. Baud rate is 115200 to match the firmware.</p>
+          <p class="hint">Need more detail in the log? Open your device's config page in a browser, go to <strong>Diagnostics</strong>, and turn on <strong>Enable verbose serial logging</strong>. That streams MQTT and printer events over USB. Disable it again when you're done - it impacts performance.</p>
         </section>
 
         <footer class="footer">

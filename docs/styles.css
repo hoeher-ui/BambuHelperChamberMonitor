@@ -744,6 +744,59 @@ esp-web-install-button::part(button) {
   font-family: var(--sans) !important;
 }
 
+/* ────────── 03 serial monitor ────────── */
+
+.monitor-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.btn-monitor {
+  font: inherit;
+  font-weight: 500;
+  padding: 9px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--accent-line);
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+  transition: filter 120ms ease, opacity 120ms ease, background 120ms ease;
+}
+.btn-monitor:hover:not(:disabled) { filter: brightness(1.05); }
+.btn-monitor:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-monitor.btn-ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+.btn-monitor.btn-ghost:hover:not(:disabled) { background: var(--bg-elev-1); }
+
+.monitor-output {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-all;
+  height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.monitor-output::-webkit-scrollbar { width: 6px; }
+.monitor-output::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+.monitor-output:empty::before {
+  content: "Waiting for connection...";
+  color: var(--fg-faint);
+}
+
+.status-line.ok { color: var(--ok); }
+
 /* ────────── responsive ────────── */
 
 @media (max-width: 980px) {

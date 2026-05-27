@@ -173,6 +173,7 @@ async function init() {
   checkBrowserSupport();
   populateBoardSelect();
   renderSpecs(DEFAULT_BOARD);
+  wireMonitor();
 
   try {
     _version = await loadVersion();
@@ -189,6 +190,149 @@ async function init() {
     renderSpecs(boardId);
     renderInstallButton(boardId, _version);
   });
+}
+
+// ────────── 03 serial monitor ──────────
+// Reads the device's USB CDC stream at 115200 baud and appends decoded text
+// to <pre id="monitor-output">. Independent of the ESP Web Tools install
+// button - only one program can hold the port at a time, so users must
+// not click Install while connected here.
+
+let _monitorPort = null;
+let _monitorReader = null;
+let _monitorReadLoopRunning = false;
+
+async function monitorConnect() {
+  if (_monitorPort) return;
+  let port;
+  try {
+    port = await navigator.serial.requestPort();
+  } catch (err) {
+    if (err && err.name === 'NotFoundError') return; // user cancelled picker
+    setMonitorStatus(`Could not pick a port: ${err.message}`, 'error');
+    return;
+  }
+  try {
+    await port.open({ baudRate: 115200 });
+  } catch (err) {
+    setMonitorStatus(
+      `Could not open the port: ${err.message}. Close other monitors and try again.`,
+      'error',
+    );
+    return;
+  }
+  _monitorPort = port;
+  toggleMonitorButtons(true);
+  setMonitorStatus('Connected. Reading from device...', 'ok');
+  monitorReadLoop().catch((err) => {
+    setMonitorStatus(`Read error: ${err.message}`, 'error');
+  });
+}
+
+async function monitorDisconnect() {
+  if (!_monitorPort) return;
+  setMonitorStatus('Disconnecting...');
+  try { if (_monitorReader) await _monitorReader.cancel(); } catch (_) {}
+  while (_monitorReadLoopRunning) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  try { await _monitorPort.close(); } catch (_) {}
+  _monitorPort = null;
+  _monitorReader = null;
+  toggleMonitorButtons(false);
+  setMonitorStatus('Disconnected.');
+}
+
+async function monitorReadLoop() {
+  _monitorReadLoopRunning = true;
+  const decoder = new TextDecoder();
+  try {
+    while (_monitorPort && _monitorPort.readable) {
+      const reader = _monitorPort.readable.getReader();
+      _monitorReader = reader;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value && value.byteLength) {
+            appendMonitorOutput(decoder.decode(value, { stream: true }));
+          }
+        }
+      } finally {
+        reader.releaseLock();
+        _monitorReader = null;
+      }
+    }
+  } finally {
+    _monitorReadLoopRunning = false;
+  }
+}
+
+function appendMonitorOutput(text) {
+  const out = document.getElementById('monitor-output');
+  const wasEmpty = out.textContent.length === 0;
+  const atBottom = out.scrollHeight - out.clientHeight - out.scrollTop < 4;
+  out.appendChild(document.createTextNode(text));
+  // Cap buffer at ~200 KB so a long debug session doesn't lock the tab.
+  if (out.textContent.length > 200000) {
+    out.textContent = out.textContent.slice(-150000);
+  }
+  if (atBottom) out.scrollTop = out.scrollHeight;
+  if (wasEmpty) setMonitorBufferButtons(true);
+}
+
+function monitorExport() {
+  const out = document.getElementById('monitor-output');
+  const text = out.textContent;
+  if (!text) return;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('Z', '');
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bambuhelper-serial-${ts}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Defer revoke so the browser has time to start the download.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function monitorClear() {
+  document.getElementById('monitor-output').textContent = '';
+  setMonitorBufferButtons(false);
+}
+
+function setMonitorBufferButtons(hasContent) {
+  document.getElementById('monitor-export').disabled = !hasContent;
+  document.getElementById('monitor-clear').disabled = !hasContent;
+}
+
+function setMonitorStatus(message, kind) {
+  const line = document.getElementById('monitor-status');
+  line.textContent = message || '';
+  line.className = 'status-line' + (kind ? ' ' + kind : '');
+}
+
+function toggleMonitorButtons(connected) {
+  document.getElementById('monitor-connect').disabled = connected;
+  document.getElementById('monitor-disconnect').disabled = !connected;
+}
+
+function wireMonitor() {
+  const connectBtn = document.getElementById('monitor-connect');
+  if (!('serial' in navigator)) {
+    connectBtn.disabled = true;
+    setMonitorStatus(
+      'Web Serial is unavailable in this browser - use desktop Chrome or Edge.',
+      'warn',
+    );
+    return;
+  }
+  connectBtn.addEventListener('click', monitorConnect);
+  document.getElementById('monitor-disconnect').addEventListener('click', monitorDisconnect);
+  document.getElementById('monitor-export').addEventListener('click', monitorExport);
+  document.getElementById('monitor-clear').addEventListener('click', monitorClear);
 }
 
 init();
