@@ -873,7 +873,11 @@ void drawLayerGauge(lgfx::LovyanGFX& gfx, int16_t cx, int16_t cy, int16_t radius
     gfx.drawString(layerBuf, cx, hasTot ? (cy - 4 + LY_GAUGE_VALUE_NUDGE_Y) : cy);
 
     if (hasTot) {
-      fitValueFont(gfx, totalBuf, radius, thickness, useSmall ? FONT_SMALL : FONT_BODY);
+      // Secondary "/total" line uses FONT_SMALL, matching the temp gauge's
+      // target line. FONT_BODY here was a taller glyph box at the same tight
+      // cy+10 offset, so its top climbed up into the main layer number — and
+      // in compact mode (main capped at FONT_BODY) the two lines collided.
+      fitValueFont(gfx, totalBuf, radius, thickness, FONT_SMALL);
       setGaugeClearedTextColor(gfx, CLR_TEXT_DIM, bg);
       gfx.drawString(totalBuf, cx, cy + (useSmall ? 8 : 10));
     }
