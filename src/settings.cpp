@@ -83,6 +83,13 @@ uint16_t bambuColorToRgb565(const char* rrggbbaa) {
   if (g < min_val) min_val = g;
   if (b < min_val) min_val = b;
 
+  // Near-black filaments: Bambu reports "black" spools as ~#161616, not pure
+  // #000000. The residual RGB565 value (0x10A2) renders as true black on IPS
+  // panels (jc3248w535) but as a visible dark grey on ST7789 panels
+  // (ws_lcd_200, CYD). Snap near-black to pure black so it looks black on every
+  // panel. Done before the boosts so it can't be re-lightened.
+  if (max_val < 32) return 0x0000;
+
   if (max_val > 0 && max_val > min_val) {
     // Avoid blowing out almost-grey colors (like silver/grey filaments)
     // Only boost if there is a distinct color (saturation > 10%)
