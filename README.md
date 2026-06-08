@@ -1,3 +1,21 @@
+# BambuHelper Chamber Monitor Edition
+
+Fork of [BambuHelper by Keralots](https://github.com/Keralots/BambuHelper) with integrated DHT22 Chamber Monitor for Bambu Lab P1S.
+
+## What's different
+- CYD display: tap anywhere to toggle between BambuHelper printer status and chamber temperature/humidity monitor
+- DHT22 sensor on GPIO 27 (P3 connector)
+- Touch again to switch back
+
+## Modified files
+- `src/display_ui.cpp`
+- `include/display_ui.h`
+- `src/main.cpp`
+- `platformio.ini`
+
+---
+
+
 # BambuHelper
 
 Dedicated Bambu Lab printer monitor built with ESP32-S3 Super Mini and a 1.54" 240x240 color TFT display (ST7789).
