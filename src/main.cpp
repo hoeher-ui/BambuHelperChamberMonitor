@@ -305,7 +305,8 @@ static void handleDisplayedPrinterFinishState(ScreenState current, BambuState& s
   if (current != SCREEN_FINISHED && !isSleepStickyScreen(current) &&
       !(current == SCREEN_IDLE && s.ams.anyDrying) &&
       !(current == SCREEN_PRINTING && finishActive) &&
-      !(current == SCREEN_IDLE && finishDismissedByWake)) {
+      !(current == SCREEN_IDLE && finishDismissedByWake) &&
+      current != SCREEN_CHAMBER_MONITOR) {
     setScreenState(dpSettings.keepPrintScreen ? SCREEN_PRINTING : SCREEN_FINISHED);
     finishScreenStart = millis();
     finishActive = true;
@@ -341,7 +342,7 @@ static void handleDisplayedPrinterIdleState(ScreenState current, const BambuStat
 
   ScreenState target = (dpSettings.keepPrintScreen && !s.ams.anyDrying)
                        ? SCREEN_PRINTING : SCREEN_IDLE;
-  if (current != target) {
+  if (current != target && current != SCREEN_CHAMBER_MONITOR) {
     if (current == SCREEN_CONNECTING_MQTT) buzzerPlay(BUZZ_CONNECTED);
     setScreenState(target);
     finishActive = false;
@@ -354,7 +355,7 @@ static void handleDisplayedPrinterConnectedState(ScreenState current, BambuState
     finishDismissedByWake = false;
   }
   if (s.printing) {
-    if (current != SCREEN_PRINTING) {
+    if (current != SCREEN_PRINTING && current != SCREEN_CHAMBER_MONITOR) {
       setScreenState(SCREEN_PRINTING);
     }
     if (finishActive) {
