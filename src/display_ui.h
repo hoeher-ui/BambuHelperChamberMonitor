@@ -18,7 +18,8 @@ enum ScreenState {
   SCREEN_FINISHED,
   SCREEN_CLOCK,
   SCREEN_OFF,
-  SCREEN_OTA_UPDATE
+  SCREEN_OTA_UPDATE,
+  SCREEN_CHAMBER_MONITOR
 };
 
 extern lgfx::LovyanGFX* tft_ptr;
