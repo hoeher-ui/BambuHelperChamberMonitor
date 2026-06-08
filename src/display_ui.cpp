@@ -18,6 +18,7 @@
 #include <Wire.h>     // SenseCAP: PCA9535PW IO expander / ws_lcd_350: TCA9554 LCD reset
 #endif
 #include <new>   // placement new for CYD panel variant selection
+#include <DHT.h> // Chamber Monitor sensor
 
 // =============================================================================
 //  LovyanGFX board-specific configurations
@@ -3917,6 +3918,309 @@ void checkNightMode() {
   }
 }
 
+// ============================================================
+//  CHAMBER MONITOR
+// ============================================================
+#define DHT_PIN      27
+#define DHT_TYPE     DHT22
+
+#define CM_BG        0x0000
+#define CM_PANEL     0x0842
+#define CM_BORDER    0x4208
+#define CM_LGRAY     0x9CF3
+#define CM_DGRAY     0x2104
+#define CM_ORANGE    0xFD00
+#define CM_ORANGE2   0xFB80
+#define CM_BLUE      0x5DBF
+#define CM_BLUE2     0x867F
+
+#define CM_GRAPH_POINTS  60
+#define CM_GRAPH_X        4
+#define CM_GRAPH_Y      170
+#define CM_GRAPH_W      312
+#define CM_GRAPH_H       62
+
+#define CM_READ_INTERVAL    60000UL
+#define CM_REDRAW_INTERVAL    500UL
+
+static DHT         cm_dht(DHT_PIN, DHT_TYPE);
+static LGFX_Sprite cm_graphSprite;
+
+static float   cm_tempHistory[CM_GRAPH_POINTS];
+static float   cm_humHistory[CM_GRAPH_POINTS];
+static uint8_t cm_histIdx   = 0;
+static bool    cm_histFull  = false;
+
+static float cm_currentTemp = 0.0f;
+static float cm_currentHum  = 0.0f;
+static float cm_minTemp     = 999.0f,  cm_maxTemp = -999.0f;
+static float cm_minHum      = 999.0f,  cm_maxHum  = -999.0f;
+
+static unsigned long cm_lastRead    = 0;
+static unsigned long cm_lastRedraw  = 0;
+static bool          cm_initialized = false;
+static bool          cm_layoutDrawn = false;
+
+static void cm_drawTempIcon(int cx, int cy) {
+  tft.fillRect(cx - 2, cy - 6, 4, 10, CM_ORANGE);
+  tft.fillCircle(cx, cy + 5, 4, CM_ORANGE);
+  tft.drawRect(cx - 3, cy - 7, 6, 11, CM_ORANGE);
+}
+
+static void cm_drawHumIcon(int cx, int cy) {
+  tft.fillTriangle(cx, cy - 7, cx - 4, cy + 2, cx + 4, cy + 2, CM_BLUE);
+  tft.fillCircle(cx, cy + 3, 4, CM_BLUE);
+}
+
+static void cm_drawMiniBar(int x, int y, int w, float val,
+                           float minV, float maxV, uint16_t col) {
+  int barW = map(constrain((int)val, (int)minV, (int)maxV),
+                 (int)minV, (int)maxV, 0, w);
+  tft.fillRoundRect(x, y, w,    5, 2, CM_BORDER);
+  if (barW > 0)
+    tft.fillRoundRect(x, y, barW, 5, 2, col);
+}
+
+static void cm_initOnce() {
+  if (cm_initialized) return;
+  cm_dht.begin();
+  cm_graphSprite.setColorDepth(16);
+  cm_graphSprite.createSprite(CM_GRAPH_W, CM_GRAPH_H);
+  for (int i = 0; i < CM_GRAPH_POINTS; i++) {
+    cm_tempHistory[i] = 0;
+    cm_humHistory[i]  = 0;
+  }
+  cm_initialized = true;
+}
+
+static void cm_readSensor() {
+  float t = cm_dht.readTemperature();
+  float h = cm_dht.readHumidity();
+  if (isnan(t) || isnan(h)) {
+    Serial.println("DHT22 Lesefehler!");
+    return;
+  }
+  cm_currentTemp = t;
+  cm_currentHum  = h;
+  if (t < cm_minTemp) cm_minTemp = t;
+  if (t > cm_maxTemp) cm_maxTemp = t;
+  if (h < cm_minHum)  cm_minHum  = h;
+  if (h > cm_maxHum)  cm_maxHum  = h;
+  cm_tempHistory[cm_histIdx] = t;
+  cm_humHistory[cm_histIdx]  = h;
+  cm_histIdx = (cm_histIdx + 1) % CM_GRAPH_POINTS;
+  if (cm_histIdx == 0) cm_histFull = true;
+  Serial.printf("[Chamber] T: %.1f C   H: %.1f%%\n", t, h);
+}
+
+static void cm_drawStaticLayout() {
+  tft.setRotation(3);  // Landscape, USB-C rechts
+  tft.fillScreen(CM_BG);
+
+  // Header
+  tft.fillRect(0, 0, 320, 24, CM_PANEL);
+  tft.drawFastHLine(0, 24, 320, CM_ORANGE);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(CM_ORANGE, CM_PANEL);
+  tft.setTextSize(1);
+  tft.drawString("BAMBU P1S", 6, 12);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(0xFFFF, CM_PANEL);
+  tft.drawString("CHAMBER MONITOR", 160, 12);
+  tft.setTextDatum(MR_DATUM);
+  tft.setTextColor(CM_BLUE, CM_PANEL);
+  tft.drawString("DHT22", 314, 12);
+
+  // Temp panel
+  tft.fillRect(0, 27, 156, 122, CM_PANEL);
+  tft.drawRect(0, 27, 156, 122, CM_BORDER);
+  tft.drawFastHLine(0, 47, 156, CM_BORDER);
+  tft.fillRect(0, 27, 3, 122, CM_ORANGE);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(CM_ORANGE, CM_PANEL);
+  tft.setTextSize(1);
+  tft.drawString("TEMPERATURE", 10, 37);
+  cm_drawTempIcon(143, 37);
+
+  // Humidity panel
+  tft.fillRect(160, 27, 160, 122, CM_PANEL);
+  tft.drawRect(160, 27, 160, 122, CM_BORDER);
+  tft.drawFastHLine(160, 47, 160, CM_BORDER);
+  tft.fillRect(317, 27, 3, 122, CM_BLUE);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(CM_BLUE, CM_PANEL);
+  tft.setTextSize(1);
+  tft.drawString("HUMIDITY", 168, 37);
+  cm_drawHumIcon(308, 37);
+
+  // Graph area
+  tft.fillRect(0, 151, 320, 89, CM_PANEL);
+  tft.drawRect(0, 151, 320, 88, CM_BORDER);
+  tft.drawFastHLine(0, 151, 320, CM_ORANGE);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(CM_LGRAY, CM_PANEL);
+  tft.setTextSize(1);
+  tft.drawString("HISTORY  (60 x 1min)", 6, 162);
+  tft.fillRect(210, 158, 14, 3, CM_ORANGE);
+  tft.setTextColor(CM_ORANGE, CM_PANEL);
+  tft.drawString("TEMP", 227, 162);
+  tft.fillRect(272, 158, 14, 3, CM_BLUE);
+  tft.setTextColor(CM_BLUE, CM_PANEL);
+  tft.drawString("HUM", 289, 162);
+
+  cm_layoutDrawn = true;
+}
+
+static void cm_drawValues() {
+  char buf[10];
+  char mm[20];
+
+  // Temperature
+  tft.fillRect(2, 50, 152, 78, CM_PANEL);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(CM_ORANGE, CM_PANEL);
+  tft.setTextSize(1);
+  setFont(tft, FONT_7SEG);
+  dtostrf(cm_currentTemp, 4, 1, buf);
+  tft.drawString(buf, 62, 82);
+  setFont(tft, FONT_BODY);
+  tft.setTextColor(0xFFFF, CM_PANEL);
+  tft.drawString("o", 118, 60);
+  tft.setTextColor(CM_ORANGE, CM_PANEL);
+  tft.drawString("C", 128, 75);
+
+  tft.fillRect(3, 116, 151, 16, CM_PANEL);
+  setFont(tft, FONT_SMALL);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(CM_BLUE2, CM_PANEL);
+  sprintf(mm, "MIN %.1f", cm_minTemp == 999.0f ? 0.0f : cm_minTemp);
+  tft.drawString(mm, 6, 124);
+  tft.setTextDatum(MR_DATUM);
+  tft.setTextColor(CM_ORANGE2, CM_PANEL);
+  sprintf(mm, "MAX %.1f", cm_maxTemp == -999.0f ? 0.0f : cm_maxTemp);
+  tft.drawString(mm, 153, 124);
+  cm_drawMiniBar(3, 136, 150, cm_currentTemp, 0, 80, CM_ORANGE);
+
+  // Humidity
+  tft.fillRect(162, 50, 156, 78, CM_PANEL);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(CM_BLUE, CM_PANEL);
+  tft.setTextSize(1);
+  setFont(tft, FONT_7SEG);
+  dtostrf(cm_currentHum, 4, 1, buf);
+  tft.drawString(buf, 244, 82);
+  setFont(tft, FONT_BODY);
+  tft.setTextColor(CM_BLUE, CM_PANEL);
+  tft.drawString("%", 310, 60);
+
+  tft.fillRect(163, 116, 155, 16, CM_PANEL);
+  setFont(tft, FONT_SMALL);
+  tft.setTextDatum(ML_DATUM);
+  tft.setTextColor(CM_BLUE2, CM_PANEL);
+  sprintf(mm, "MIN %.1f", cm_minHum == 999.0f ? 0.0f : cm_minHum);
+  tft.drawString(mm, 166, 124);
+  tft.setTextDatum(MR_DATUM);
+  tft.setTextColor(CM_ORANGE2, CM_PANEL);
+  sprintf(mm, "MAX %.1f", cm_maxHum == -999.0f ? 0.0f : cm_maxHum);
+  tft.drawString(mm, 316, 124);
+  cm_drawMiniBar(163, 136, 154, cm_currentHum, 0, 100, CM_BLUE);
+}
+
+static void cm_drawGraph() {
+  cm_graphSprite.fillSprite(CM_PANEL);
+
+  int gW = CM_GRAPH_W;
+  int gH = CM_GRAPH_H - 6;
+  int gY = 3;
+
+  for (int i = 0; i <= 3; i++) {
+    int yy = gY + (gH * i / 3);
+    cm_graphSprite.drawFastHLine(0, yy, gW, CM_DGRAY);
+  }
+  for (int i = 0; i <= 5; i++) {
+    int xx = gW * i / 5;
+    cm_graphSprite.drawFastVLine(xx, gY, gH, CM_DGRAY);
+  }
+
+  int count = cm_histFull ? CM_GRAPH_POINTS : cm_histIdx;
+  if (count < 2) {
+    cm_graphSprite.pushSprite(&tft, CM_GRAPH_X, CM_GRAPH_Y);
+    return;
+  }
+
+  float tMin = 10, tMax = 80;
+  float hMin = 0,  hMax = 100;
+  int startIdx = cm_histFull ? cm_histIdx : 0;
+  int prevTX = -1, prevTY = -1;
+  int prevHX = -1, prevHY = -1;
+
+  for (int i = 0; i < count; i++) {
+    int dataIdx = (startIdx + i) % CM_GRAPH_POINTS;
+    int x = (int)((float)i / (CM_GRAPH_POINTS - 1) * (gW - 2)) + 1;
+
+    float t = cm_tempHistory[dataIdx];
+    float h = cm_humHistory[dataIdx];
+
+    int ty = gY + gH - (int)((t - tMin) / (tMax - tMin) * gH);
+    int hy = gY + gH - (int)((h - hMin) / (hMax - hMin) * gH);
+    ty = constrain(ty, gY, gY + gH);
+    hy = constrain(hy, gY, gY + gH);
+
+    if (prevTX >= 0) {
+      cm_graphSprite.drawLine(prevTX, prevTY, x, ty, CM_ORANGE);
+      cm_graphSprite.drawFastVLine(x, ty, (gY + gH) - ty, CM_DGRAY);
+    }
+    if (prevHX >= 0) {
+      cm_graphSprite.drawLine(prevHX, prevHY, x, hy, CM_BLUE);
+    }
+    prevTX = x; prevTY = ty;
+    prevHX = x; prevHY = hy;
+  }
+
+  if (prevTX >= 0) {
+    cm_graphSprite.fillCircle(prevTX, prevTY, 3, CM_ORANGE);
+    cm_graphSprite.fillCircle(prevHX, prevHY, 3, CM_BLUE);
+  }
+
+  cm_graphSprite.setTextSize(1);
+  cm_graphSprite.setTextColor(CM_ORANGE, CM_PANEL);
+  cm_graphSprite.setTextDatum(ML_DATUM);
+  cm_graphSprite.drawString("80", 2, gY + 4);
+  cm_graphSprite.drawString("10", 2, gY + gH - 4);
+  cm_graphSprite.setTextColor(CM_BLUE, CM_PANEL);
+  cm_graphSprite.setTextDatum(MR_DATUM);
+  cm_graphSprite.drawString("100%", gW - 2, gY + 4);
+  cm_graphSprite.drawString("0%",   gW - 2, gY + gH - 4);
+
+  cm_graphSprite.pushSprite(&tft, CM_GRAPH_X, CM_GRAPH_Y);
+}
+
+static void drawChamberMonitor() {
+  cm_initOnce();
+
+  if (forceRedraw) {
+    cm_layoutDrawn = false;
+  }
+  if (!cm_layoutDrawn) {
+    cm_drawStaticLayout();
+    cm_lastRead = 0;  // force immediate sensor read
+  }
+
+  unsigned long now = millis();
+
+  if (now - cm_lastRead >= CM_READ_INTERVAL || cm_lastRead == 0) {
+    cm_lastRead = now;
+    cm_readSensor();
+  }
+
+  if (now - cm_lastRedraw >= CM_REDRAW_INTERVAL) {
+    cm_lastRedraw = now;
+    cm_drawValues();
+    cm_drawGraph();
+    markFrameDirty();
+  }
+}
+
 // ---------------------------------------------------------------------------
 //  Main update (called from loop)
 // ---------------------------------------------------------------------------
@@ -3954,6 +4258,10 @@ void updateDisplay() {
 
   // Detect screen change
   if (currentScreen != prevScreen) {
+    // Restore rotation when leaving SCREEN_CHAMBER_MONITOR
+    if (prevScreen == SCREEN_CHAMBER_MONITOR && currentScreen != SCREEN_CHAMBER_MONITOR) {
+      tft.setRotation(sanitizeRotation(dispSettings.rotation));
+    }
     // Restore backlight when leaving SCREEN_OFF or SCREEN_CLOCK
     if ((prevScreen == SCREEN_OFF || prevScreen == SCREEN_CLOCK) &&
         currentScreen != SCREEN_OFF && currentScreen != SCREEN_CLOCK) {
@@ -4020,6 +4328,10 @@ void updateDisplay() {
 
     case SCREEN_OTA_UPDATE:
       drawOtaUpdate();
+      break;
+
+    case SCREEN_CHAMBER_MONITOR:
+      drawChamberMonitor();
       break;
 
     case SCREEN_IDLE:
