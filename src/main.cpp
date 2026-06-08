@@ -71,7 +71,7 @@ static bool anyPrinterDrying() {
 }
 
 static bool isSleepStickyScreen(ScreenState state) {
-  return state == SCREEN_CLOCK || state == SCREEN_OFF;
+  return state == SCREEN_CLOCK || state == SCREEN_OFF || state == SCREEN_CHAMBER_MONITOR;
 }
 
 static void transitionToClockOrOff() {
@@ -176,17 +176,21 @@ static bool isBoardButton3Held() {
 static void doTapActions() {
   ScreenState cur = getScreenState();
 
+  // Chamber Monitor Toggle — muss VOR isSleepStickyScreen geprueft werden,
+  // da SCREEN_CHAMBER_MONITOR jetzt als sticky gilt.
+  if (cur == SCREEN_CHAMBER_MONITOR) {
+    setScreenState(SCREEN_IDLE);
+    return;
+  }
+
+  // Wake from sleep/clock
   if (isSleepStickyScreen(cur)) {
     setBacklight(getEffectiveBrightness());
     finishActive = false;
     idleClockActive = false;
     resetMqttBackoff();
-    deferMqttReconnect();  // skip blocking reconnect this iteration so screen wakes instantly
-    setScreenState(SCREEN_IDLE);  // state machine will correct on next loop
-    // If the displayed printer is in GCODE_FINISH, user has now dismissed
-    // the finished-print banner by waking — don't let the state machine
-    // bounce IDLE → FINISHED → CLOCK in the next iteration. Cleared when
-    // the printer moves away from GCODE_FINISH (new print starts).
+    deferMqttReconnect();
+    setScreenState(SCREEN_IDLE);
     if (isAnyPrinterConfigured() && isWiFiConnected() && !isAPMode()) {
       if (displayedPrinter().state.gcodeStateId == GCODE_FINISH) {
         finishDismissedByWake = true;
@@ -195,11 +199,14 @@ static void doTapActions() {
     return;
   }
 
-  if (getActiveConnCount() >= 2) {
-    cycleDisplayedPrinterFromButton();
+  if (cur == SCREEN_IDLE     ||
+      cur == SCREEN_PRINTING ||
+      cur == SCREEN_FINISHED) {
+    setScreenState(SCREEN_CHAMBER_MONITOR);
     return;
   }
 
+  // Urspruengliches Verhalten fuer alle anderen Screens
   if (isCloudMode(displayedPrinter().config.mode) &&
       !displayedPrinter().state.printing) {
     requestCloudRefresh(rotState.displayIndex);
@@ -217,15 +224,6 @@ static void handleWakeButton() {
   uint32_t boardHoldMs = boardButtonHoldDurationMs();
   uint32_t holdMs = (touchHoldMs > boardHoldMs) ? touchHoldMs : boardHoldMs;
   bool suppressDim = isBoardButton3Held();
-#if defined(USE_XPT2046)
-  // Resistive panels (CYD, TZT) register a wake touch as a long press that
-  // easily crosses the 300ms hold threshold. That would ramp the LED (default
-  // direction is up, toward max), save it, and consume the press so the screen
-  // never wakes. Suppress dimming while asleep so the touch only wakes.
-  // Capacitive panels get crisp short taps and keep hold-to-dim on the
-  // screensaver, so this gate is XPT2046-only.
-  if (isSleepStickyScreen(getScreenState())) suppressDim = true;
-#endif
 
   // Tick the dimmer every loop regardless of state - it owns the 2 s save debounce.
   bool holdConsumed = ledHoldDimUpdate(held, holdMs, suppressDim);
